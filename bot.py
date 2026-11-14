@@ -2,16 +2,19 @@ import os
 import asyncio
 import json
 import time
+from contextlib import asynccontextmanager
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
+from fastapi import FastAPI, HTTPException, Query, Request
 
-# Настройки бота (Токенни @BotFather орқали янгилаб, шу ерга ёки муҳит ўзгарувчисига қўйинг)
+# Настройки бота
 TOKEN = "9165298433:AAHaiuVQHEcGT9ziWetjgbJ_tPUiF3Cy2pw"
 ADMIN_ID = 8274122612
 WEBAPP_URL = "https://github.com/rakhmatjonablakulov-dev/tasbeh_bot.git"
+MONETAG_SECRET = "my_super_secret_key_123"  # Секретный ключ для постбэков Monetag
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -27,15 +30,12 @@ def load_tasks():
                 tasks = json.load(f)
                 current_time = time.time()
                 
-                # Муддати ўтмаган вазифаларни қолдирамиз (expires_at мавжуд ва вақти ўтган бўлса ташлаймиз)
                 active_tasks = []
                 for task in tasks:
                     expires_at = task.get('expires_at')
-                    # Агар expires_at None бўлса — бу чексиз вазифа дегани
                     if expires_at is None or expires_at > current_time:
                         active_tasks.append(task)
                 
-                # Агар муддати ўтган вазифалар ўчирилган бўлса, файлни янгилаб қўямиз
                 if len(active_tasks) != len(tasks):
                     save_tasks(active_tasks)
                     
@@ -43,7 +43,6 @@ def load_tasks():
         except Exception:
             pass
             
-    # Бошланғич вазифалар (чексиз муддат билан)
     return [                 
         {"id": 1, "title": "📢 Расмий каналга обуна бўлиш", "reward": 50, "url": "https://t.me/telegram", "expires_at": None},
         {"id": 2, "title": "⭐ Лойиҳани қўллаб-қувватлаш", "reward": 30, "url": "https://t.me/telegram", "expires_at": None}
@@ -64,7 +63,6 @@ def load_users_data():
         try:
             with open(USERS_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                # JSON калитларини int га ўтказиш
                 return {
                     "users": set(data.get("users", [])),
                     "balances": {int(k): v for k, v in data.get("balances", {}).items()},
@@ -101,6 +99,9 @@ user_balances = db_data["balances"]
 user_names = db_data["names"]
 referred_users = db_data["referred"]
 user_completed_tasks = db_data["completed_tasks"]
+
+# Защита от дублей постбэков Monetag
+processed_ymids = set()
 
 # FSM Ҳолатлари
 class WithdrawStates(StatesGroup):
@@ -195,7 +196,6 @@ async def back_to_main_menu(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer("✨ Асосий менюга қайтдингиз.", reply_markup=get_main_menu())
 
-# 1. Т А С Б Е Х Н И  О Ч И Ш
 @dp.message(F.text == "📿 Т А С Б Е Х Н И  О Ч И Ш")
 async def open_tasbih(message: types.Message):
     builder = InlineKeyboardBuilder()
@@ -207,7 +207,6 @@ async def open_tasbih(message: types.Message):
         parse_mode="HTML"
     )
 
-# 💰 Балансим
 @dp.message(F.text == "💰 Балансим")
 async def check_balance(message: types.Message):
     user_id = message.from_user.id
@@ -220,7 +219,6 @@ async def check_balance(message: types.Message):
         reply_markup=get_main_menu()
     )
 
-# 2. Пулни ечиб олиш
 @dp.message(F.text == "💳 Пулни ечиб олиш")
 async def process_withdrawal(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
@@ -319,7 +317,6 @@ async def admin_payment_decision(callback: types.CallbackQuery):
 
     await callback.answer("Бажарилди!")
 
-# 🏆 Рейтинг
 @dp.message(F.text == "🏆 Рейтинг")
 async def show_leaderboard(message: types.Message):
     sorted_users = sorted(user_balances.items(), key=lambda x: x[1], reverse=True)[:10]
@@ -339,7 +336,6 @@ async def show_leaderboard(message: types.Message):
 
     await message.answer(text, parse_mode="HTML", reply_markup=get_main_menu())
 
-# 👥 Дўстларни таклиф
 @dp.message(F.text == "👥 Дўстларни таклиф")
 async def process_referral(message: types.Message):
     bot_info = await bot.get_me()
@@ -353,7 +349,6 @@ async def process_referral(message: types.Message):
         parse_mode="HTML"
     )
 
-# 📋 Вазифалар
 @dp.message(F.text == "📋 Вазифалар")
 async def process_tasks(message: types.Message):
     global tasks_list
@@ -453,7 +448,6 @@ async def task_callback_handler(callback: types.CallbackQuery):
     except Exception:
         pass
 
-# ⭐ Рекламани кўриш
 @dp.message(F.text == "⭐ Рекламани кўриш")
 async def process_ads_view(message: types.Message):
     builder = InlineKeyboardBuilder()
@@ -465,10 +459,7 @@ async def process_ads_view(message: types.Message):
         parse_mode="HTML"
     )
 
-# ==========================================
-# ------------ АДМИН ПАНЕЛЬ КОДИ ------------
-# ==========================================
-
+# АДМИН ПАНЕЛЬ КОДИ
 @dp.message(Command("admin"))
 async def admin_panel(message: types.Message):
     if message.from_user.id != ADMIN_ID:
@@ -687,7 +678,6 @@ async def admin_task_get_hours(message: types.Message, state: FSMContext):
     except ValueError:
         await message.answer("❌ Фақат бутун рақам киритинг (масалан: 24 ёки 0):")
 
-# Админ учун вазифаларни кўриш ва ўчириш менюси
 @dp.message(F.text == "📋 Вазифаларни бошқариш")
 async def admin_manage_tasks(message: types.Message):
     if message.from_user.id != ADMIN_ID:
@@ -717,7 +707,6 @@ async def admin_manage_tasks(message: types.Message):
             parse_mode="HTML"
         )
 
-# Вазифани ўчириш (callback) сўровини қабул қилиш
 @dp.callback_query(F.data.startswith("del_task_"))
 async def callback_delete_task(callback: types.CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
@@ -737,10 +726,44 @@ async def callback_delete_task(callback: types.CallbackQuery):
     except Exception:
         pass
 
-# Запуск бота
-async def main():
-    print("Тасбеҳ боти муваффақиятли ишга тушди...")
-    await dp.start_polling(bot)
 
-if __name__ == "__main__":
-    asyncio.run(main())
+# --- FASTAPI ИНТЕГРАЦИЯ ДЛЯ MONETAG И RENDER ---
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Запуск поллинга телеграм-бота в фоновом режиме
+    polling_task = asyncio.create_task(dp.start_polling(bot))
+    print("Тасбеҳ боти ва веб-сервер муваффақиятли ишга тушди...")
+    yield
+    polling_task.cancel()
+    await bot.session.close()
+
+app = FastAPI(lifespan=lifespan)
+
+@app.get("/")
+async def root():
+    return {"status": "running", "bot": "active"}
+
+@app.get("/postback")
+async def monetag_postback(
+    secret: str = Query(None),
+    ymid: str = Query(None),
+    telegram_id: str = Query(None),
+    reward_event_type: str = Query(None),
+):
+    """Эндпоинт для приема S2S Postback от Monetag"""
+    if not secret or secret != MONETAG_SECRET:
+        raise HTTPException(status_code=403, detail="Invalid secret")
+
+    if reward_event_type == "valued" and ymid:
+        if ymid not in processed_ymids:
+            processed_ymids.add(ymid)
+            if telegram_id and telegram_id.isdigit():
+                try:
+                    await bot.send_message(
+                        chat_id=int(telegram_id),
+                        text="🎉 Награда за просмотр рекламы успешно начислена!"
+                    )
+                except Exception as e:
+                    print(f"Ошибка отправки сообщения: {e}")
+
+    return {"status": "accepted"}
