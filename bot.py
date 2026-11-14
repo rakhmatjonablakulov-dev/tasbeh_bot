@@ -27,11 +27,11 @@ from pydantic import BaseModel, Field
 # =========================================================
 
 TOKEN = os.getenv("BOT_TOKEN", "9165298433:AAHaiuVQHEcGT9ziWetjgbJ_tPUiF3Cy2pw").strip()
-DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://tasbehh_db_user:gr7YfjWZRyhxubOKvhR9HUXk7EKCuVD5@dpg-dbs0nbui0phs73bq91ng-a/tasbehh_db").strip()
 ADMIN_ID = int(os.getenv("ADMIN_ID", "8274122612") or "8274122612")
 
 # Настройки для Mini App и Monetag
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://github.com/rakhmatjonablakulov-dev/tasbeh_bot.git")
+WEBAPP_URL = os.getenv("WEBAPP_URL", "https://rakhmatjonablakulov-dev.github.io/tasbeh_bot/")
 MONETAG_POSTBACK_SECRET = os.getenv("MONETAG_POSTBACK_SECRET", "Z2f456G7nj9kS6ml8D").strip()
 MONETAG_ZONE_ID = "12197315"
 AD_REWARD = 200
@@ -191,7 +191,7 @@ app.add_middleware(
 
 def verify_telegram(init_data: str):
     if not init_data:
-        raise HTTPException(401, "Откройте игру через Telegram")
+        raise HTTPException(401, "Откройте тамбех через Telegram")
     try:
         data = dict(parse_qsl(init_data, keep_blank_values=True))
         received_hash = data.pop("hash", None)
