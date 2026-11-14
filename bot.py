@@ -32,7 +32,7 @@ ADMIN_ID = int(os.getenv("ADMIN_ID", "8274122612") or "8274122612")
 
 # Настройки для Mini App и Monetag
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://github.com/rakhmatjonablakulov-dev/tasbeh_bot.git")
-MONETAG_POSTBACK_SECRET = os.getenv("MONETAG_POSTBACK_SECRET", "my_super_secret_key_123").strip()
+MONETAG_POSTBACK_SECRET = os.getenv("MONETAG_POSTBACK_SECRET", "Z2f456G7nj9kS6ml8D").strip()
 MONETAG_ZONE_ID = "12197315"
 AD_REWARD = 200
 
