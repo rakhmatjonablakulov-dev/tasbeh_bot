@@ -9,7 +9,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 
 # Настройки бота (Токенни @BotFather орқали янгилаб, шу ерга ёки муҳит ўзгарувчисига қўйинг)
-TOKEN = os.getenv("9165298433:AAHaiuVQHEcGT9ziWetjgbJ_tPUiF3Cy2pw")
+TOKEN = "9165298433:AAHaiuVQHEcGT9ziWetjgbJ_tPUiF3Cy2pw"
 ADMIN_ID = 8274122612
 WEBAPP_URL = "https://github.com/rakhmatjonablakulov-dev/tasbeh_bot.git"
 
