@@ -8,10 +8,13 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 
-# Настройки бота (Токенни @BotFather орқали янгилаб, шу ерга ёки муҳит ўзгарувчисига қўйинг)
+# Настройки бота
 TOKEN = os.getenv("BOT_TOKEN", "9165298433:AAHaiuVQHEcGT9ziWetjgbJ_tPUiF3Cy2pw")
-ADMIN_ID = 8274122612
-WEBAPP_URL = "https://rakhmatjonablakulov-dev.github.io/tasbih/"
+ADMIN_ID = int(os.getenv("ADMIN_ID", "8274122612"))
+
+# WEBAPP_URL ни янги репозиторий манзилига ёки GitHub Pages га мослаб қўямиз
+# Агар GitHub Pages ёқилган бўлса: "https://rakhmatjonablakulov-dev.github.io/tasbeh_bot/"
+WEBAPP_URL = os.getenv("WEBAPP_URL", "https://rakhmatjonablakulov-dev.github.io/tasbeh_bot/")
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -27,15 +30,12 @@ def load_tasks():
                 tasks = json.load(f)
                 current_time = time.time()
                 
-                # Муддати ўтмаган вазифаларни қолдирамиз (expires_at мавжуд ва вақти ўтган бўлса ташлаймиз)
                 active_tasks = []
                 for task in tasks:
                     expires_at = task.get('expires_at')
-                    # Агар expires_at None бўлса — бу чексиз вазифа дегани
                     if expires_at is None or expires_at > current_time:
                         active_tasks.append(task)
                 
-                # Агар муддати ўтган вазифалар ўчирилган бўлса, файлни янгилаб қўямиз
                 if len(active_tasks) != len(tasks):
                     save_tasks(active_tasks)
                     
@@ -43,7 +43,6 @@ def load_tasks():
         except Exception:
             pass
             
-    # Бошланғич вазифалар (чексиз муддат билан)
     return [                 
         {"id": 1, "title": "📢 Расмий каналга обуна бўлиш", "reward": 50, "url": "https://t.me/telegram", "expires_at": None},
         {"id": 2, "title": "⭐ Лойиҳани қўллаб-қувватлаш", "reward": 30, "url": "https://t.me/telegram", "expires_at": None}
@@ -64,9 +63,8 @@ def load_users_data():
         try:
             with open(USERS_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                # JSON калитларини int га ўтказиш
                 return {
-                    "users": set(data.get("users", [])),
+                    "users": set(data.get("users", [ADMIN_ID])),
                     "balances": {int(k): v for k, v in data.get("balances", {}).items()},
                     "names": {int(k): v for k, v in data.get("names", {}).items()},
                     "referred": set(data.get("referred", [])),
@@ -93,7 +91,6 @@ def save_users_data():
     with open(USERS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
-# Базани юклаш
 tasks_list = load_tasks()
 db_data = load_users_data()
 users = db_data["users"]
@@ -102,7 +99,6 @@ user_names = db_data["names"]
 referred_users = db_data["referred"]
 user_completed_tasks = db_data["completed_tasks"]
 
-# FSM Ҳолатлари
 class WithdrawStates(StatesGroup):
     waiting_for_details = State()
 
@@ -119,7 +115,6 @@ class AdminTask(StatesGroup):
     waiting_url = State()
     waiting_hours = State()
 
-# Асосий меню
 def get_main_menu():
     builder = ReplyKeyboardBuilder()
     builder.button(text="📿 Т А С Б Е Х Н И  О Ч И Ш")
@@ -132,7 +127,6 @@ def get_main_menu():
     builder.adjust(1, 2, 2, 2)
     return builder.as_markup(resize_keyboard=True)
 
-# Админ панел менюси
 def get_admin_menu():
     builder = ReplyKeyboardBuilder()
     builder.button(text="📊 Статистика")
@@ -145,7 +139,6 @@ def get_admin_menu():
     builder.adjust(2, 2, 2, 2, 1)
     return builder.as_markup(resize_keyboard=True)
 
-# Команда /start
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     user_id = message.from_user.id
@@ -195,7 +188,6 @@ async def back_to_main_menu(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer("✨ Асосий менюга қайтдингиз.", reply_markup=get_main_menu())
 
-# 1. Т А С Б Е Х Н И  О Ч И Ш
 @dp.message(F.text == "📿 Т А С Б Е Х Н И  О Ч И Ш")
 async def open_tasbih(message: types.Message):
     builder = InlineKeyboardBuilder()
@@ -207,7 +199,6 @@ async def open_tasbih(message: types.Message):
         parse_mode="HTML"
     )
 
-# 💰 Балансим
 @dp.message(F.text == "💰 Балансим")
 async def check_balance(message: types.Message):
     user_id = message.from_user.id
@@ -220,7 +211,6 @@ async def check_balance(message: types.Message):
         reply_markup=get_main_menu()
     )
 
-# 2. Пулни ечиб олиш
 @dp.message(F.text == "💳 Пулни ечиб олиш")
 async def process_withdrawal(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
@@ -319,7 +309,6 @@ async def admin_payment_decision(callback: types.CallbackQuery):
 
     await callback.answer("Бажарилди!")
 
-# 🏆 Рейтинг
 @dp.message(F.text == "🏆 Рейтинг")
 async def show_leaderboard(message: types.Message):
     sorted_users = sorted(user_balances.items(), key=lambda x: x[1], reverse=True)[:10]
@@ -339,7 +328,6 @@ async def show_leaderboard(message: types.Message):
 
     await message.answer(text, parse_mode="HTML", reply_markup=get_main_menu())
 
-# 👥 Дўстларни таклиф
 @dp.message(F.text == "👥 Дўстларни таклиф")
 async def process_referral(message: types.Message):
     bot_info = await bot.get_me()
@@ -353,7 +341,6 @@ async def process_referral(message: types.Message):
         parse_mode="HTML"
     )
 
-# 📋 Вазифалар
 @dp.message(F.text == "📋 Вазифалар")
 async def process_tasks(message: types.Message):
     global tasks_list
@@ -397,13 +384,19 @@ async def task_callback_handler(callback: types.CallbackQuery):
         return
 
     if callback.data.startswith("ok_task_"):
-        await callback.message.delete()
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
         return
 
     task_id = int(callback.data.split("_")[2])
     user_id = callback.from_user.id
 
+    global tasks_list
+    tasks_list = load_tasks()
     target_task = next((t for t in tasks_list if t['id'] == task_id), None)
+    
     if not target_task:
         await callback.answer("Вазифа топилмади ёки муддати тугаган!", show_alert=True)
         try:
@@ -453,21 +446,16 @@ async def task_callback_handler(callback: types.CallbackQuery):
     except Exception:
         pass
 
-# ⭐ Рекламани кўриш
 @dp.message(F.text == "⭐ Рекламани кўриш")
 async def process_ads_view(message: types.Message):
     builder = InlineKeyboardBuilder()
-    builder.button(text="⭐ Рекламани кўриш ва қилинган зикрлар сонини сақлаб қолиш", web_app=types.WebAppInfo(url=WEBAPP_URL))
+    builder.button(text="⭐ Рекламани кўриш ва сақлаб қолиш", web_app=types.WebAppInfo(url=WEBAPP_URL))
     await message.answer(
         "⭐ <b>Тасбеҳлар сони учиб кетмаслиги учун</b>\n\n"
         "Рекламани кўриш орқали лойиҳамизни қўллаб-қувватланг.",
         reply_markup=builder.as_markup(),
         parse_mode="HTML"
     )
-
-# ==========================================
-# ------------ АДМИН ПАНЕЛЬ КОДИ ------------
-# ==========================================
 
 @dp.message(Command("admin"))
 async def admin_panel(message: types.Message):
@@ -687,7 +675,6 @@ async def admin_task_get_hours(message: types.Message, state: FSMContext):
     except ValueError:
         await message.answer("❌ Фақат бутун рақам киритинг (масалан: 24 ёки 0):")
 
-# Админ учун вазифаларни кўриш ва ўчириш менюси
 @dp.message(F.text == "📋 Вазифаларни бошқариш")
 async def admin_manage_tasks(message: types.Message):
     if message.from_user.id != ADMIN_ID:
@@ -717,7 +704,6 @@ async def admin_manage_tasks(message: types.Message):
             parse_mode="HTML"
         )
 
-# Вазифани ўчириш (callback) сўровини қабул қилиш
 @dp.callback_query(F.data.startswith("del_task_"))
 async def callback_delete_task(callback: types.CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
@@ -737,7 +723,6 @@ async def callback_delete_task(callback: types.CallbackQuery):
     except Exception:
         pass
 
-# Запуск бота
 async def main():
     print("Тасбеҳ боти муваффақиятли ишга тушди...")
     await dp.start_polling(bot)
