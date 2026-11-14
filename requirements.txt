@@ -1,1 +1,6 @@
-aiogram==3.17.0
+aiogram>=3.0.0
+fastapi
+uvicorn
+gunicorn
+asyncpg
+pydantic
