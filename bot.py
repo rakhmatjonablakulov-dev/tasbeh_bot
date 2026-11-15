@@ -2,7 +2,7 @@ import os
 import asyncio
 import json
 import time
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 import uvicorn
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import Message
@@ -11,15 +11,19 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 
-# Настройки бота
-TOKEN = os.getenv("BOT_TOKEN", "9165298433:AAHaiuVQHEcGT9ziWetjgbJ_tPUiF3Cy2pw")
+# Настройки бота ва ўзгарувчилар
+TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "8274122612"))
 PORT = int(os.getenv("PORT", 10000))
+MONETAG_SECRET = os.getenv("MONETAG_SECRET")
 
 # WEBAPP_URL ни GitHub Pages манзилига мослаб қўямиз
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://rakhmatjonablakulov-dev.github.io/tasbeh_bot/")
 
-bot = Bot(token=TOKEN)
+if not TOKEN:
+    print("⚠️ Огоҳлантириш: BOT_TOKEN аниқланмади! Муҳит ўзгарувчиларини текширинг.")
+
+bot = Bot(token=TOKEN) if TOKEN else None
 dp = Dispatcher()
 app = FastAPI()
 
@@ -166,13 +170,14 @@ async def cmd_start(message: types.Message):
 
             try:
                 ref_name = message.from_user.first_name or "Янги дўстингиз"
-                await bot.send_message(
-                    referrer_id,
-                    f"🎉 <b>Табриклаймиз!</b>\n\n"
-                    f"👥 Сизнинг реферал ҳаволангиз орқали <b>{ref_name}</b> ботга аъзо бўлди!\n"
-                    f"💎 Ҳисобингизга <b>+2000 балл</b> қўшилди.",
-                    parse_mode="HTML"
-                )
+                if bot:
+                    await bot.send_message(
+                        referrer_id,
+                        f"🎉 <b>Табриклаймиз!</b>\n\n"
+                        f"👥 Сизнинг реферал ҳаволангиз орқали <b>{ref_name}</b> ботга аъзо бўлди!\n"
+                        f"💎 Ҳисобингизга <b>+2000 балл</b> қўшилди.",
+                        parse_mode="HTML"
+                    )
             except Exception:
                 pass
 
@@ -279,7 +284,8 @@ async def receive_withdrawal_details(message: types.Message, state: FSMContext):
         builder.button(text="❌ Рад этиш", callback_data=f"pay_no_{user.id}_{withdrawn_amount}")
         builder.adjust(2)
 
-        await bot.send_message(ADMIN_ID, admin_text, reply_markup=builder.as_markup(), parse_mode="HTML")
+        if bot:
+            await bot.send_message(ADMIN_ID, admin_text, reply_markup=builder.as_markup(), parse_mode="HTML")
 
         await message.answer(
             "✅ <b>Сўровингиз қабул қилинди!</b>\n\n"
@@ -304,12 +310,14 @@ async def admin_payment_decision(callback: types.CallbackQuery):
     action, user_id, amount = parts[1], int(parts[2]), int(parts[3])
 
     if action == "yes":
-        await bot.send_message(user_id, "🎉 <b>Табриклаймиз!</b> Пул чиқариш сўровингиз тасдиқланди ва маблағ картангизга ўтказилди!", parse_mode="HTML")
+        if bot:
+            await bot.send_message(user_id, "🎉 <b>Табриклаймиз!</b> Пул чиқариш сўровингиз тасдиқланди ва маблағ картангизга ўтказилди!", parse_mode="HTML")
         await callback.message.edit_text(callback.message.text + "\n\n<b>✅ Статус: ТЎЛАНДИ ВА ЯКУНЛАНДИ</b>", parse_mode="HTML")
     else:
         user_balances[user_id] = user_balances.get(user_id, 0) + amount
         save_users_data()
-        await bot.send_message(user_id, f"❌ Афсус, сўровингиз рад этилди. <b>{amount} балл</b> балансингизга қайтарилди.", parse_mode="HTML")
+        if bot:
+            await bot.send_message(user_id, f"❌ Афсус, сўровингиз рад этилди. <b>{amount} балл</b> балансингизга қайтарилди.", parse_mode="HTML")
         await callback.message.edit_text(callback.message.text + "\n\n<b>❌ Статус: РАД ЭТИЛДИ (Балл қайтарилди)</b>", parse_mode="HTML")
 
     await callback.answer("Бажарилди!")
@@ -335,8 +343,11 @@ async def show_leaderboard(message: types.Message):
 
 @dp.message(F.text == "👥 Дўстларни таклиф")
 async def process_referral(message: types.Message):
-    bot_info = await bot.get_me()
-    ref_link = f"https://t.me/{bot_info.username}?start={message.from_user.id}"
+    if bot:
+        bot_info = await bot.get_me()
+        ref_link = f"https://t.me/{bot_info.username}?start={message.from_user.id}"
+    else:
+        ref_link = "#"
 
     await message.answer(
         "👥 <b>Дўстларни таклиф қилиш тизими</b>\n\n"
@@ -418,7 +429,7 @@ async def task_callback_handler(callback: types.CallbackQuery):
         return
 
     url = target_task['url']
-    if "t.me/" in url:
+    if "t.me/" in url and bot:
         channel_username = "@" + url.split("t.me/")[-1].strip("/").split("?")[0]
         try:
             member = await bot.get_chat_member(chat_id=channel_username, user_id=user_id)
@@ -471,7 +482,6 @@ async def web_app_data_handler(message: Message):
     if user_id not in user_balances:
         user_balances[user_id] = 0
         
-    # Реклама кўрилганда балл қўшиш
     if "add_bonus" in data or "watched_ad" in data or data:
         reward = 10
         user_balances[user_id] += reward
@@ -485,15 +495,20 @@ async def web_app_data_handler(message: Message):
         )
 
 # --- MONETAG POSTBACK ENDPOINT ---
-@app.get("/monetag-postback")
-async def monetag_postback(request: Request):
-    params = request.query_params
-    user_id_str = params.get("user_id")
-    reward_str = params.get("reward", "10")
+@app.get("/postback")
+async def handle_monetag_postback(
+    userid: str = "",
+    secret: str = "",
+    reward_event_type: str = ""
+):
+    # 1. Проверяем секретный ключ
+    if not MONETAG_SECRET or secret != MONETAG_SECRET:
+        raise HTTPException(status_code=403, detail="Invalid secret key")
 
-    if user_id_str and user_id_str.isdigit():
-        user_id = int(user_id_str)
-        reward = int(reward_str)
+    # 2. Проверяем, что реклама засчитана как оплаченная
+    if reward_event_type == "valued" and userid and userid.isdigit():
+        user_id = int(userid)
+        reward = 10 # Керакли балл миқдори (хоҳласангиз ўзгартиришингиз мумкин)
 
         if user_id not in user_balances:
             user_balances[user_id] = 0
@@ -502,18 +517,19 @@ async def monetag_postback(request: Request):
         save_users_data()
 
         try:
-            await bot.send_message(
-                user_id,
-                f"⭐ <b>Рекламани кўрганингиз учун ташаккур!</b>\n"
-                f"💎 Ҳисобингизга <b>+{reward} балл</b> қўшилди.",
-                parse_mode="HTML"
-            )
+            if bot:
+                await bot.send_message(
+                    user_id,
+                    f"⭐ <b>Рекламани кўрганингиз учун ташаккур!</b>\n"
+                    f"💎 Ҳисобингизга <b>+{reward} балл</b> қўшилди.",
+                    parse_mode="HTML"
+                )
         except Exception:
             pass
 
-        return {"status": "success", "user_id": user_id, "added_reward": reward}
-    
-    return {"status": "error", "message": "Invalid user_id"}
+        return {"status": "ok", "message": "Reward granted", "user_id": user_id}
+
+    return {"status": "ignored", "reason": "Non-valued event or empty userid"}
 
 @app.get("/")
 async def root():
@@ -592,7 +608,8 @@ async def admin_broadcast_send(message: types.Message, state: FSMContext):
     failed = 0
     for uid in list(users):
         try:
-            await message.copy_to(chat_id=uid)
+            if bot:
+                await message.copy_to(chat_id=uid)
             success += 1
             await asyncio.sleep(0.05)
         except Exception:
@@ -645,7 +662,8 @@ async def admin_balance_get_amount(message: types.Message, state: FSMContext):
         )
 
         try:
-            await bot.send_message(target_id, f"🎁 Админ томонидан балансингиз ўзгартирилди! Жорий баланс: {user_balances[target_id]} балл")
+            if bot:
+                await bot.send_message(target_id, f"🎁 Админ томонидан балансингиз ўзгартирилди! Жорий баланс: {user_balances[target_id]} балл")
         except Exception:
             pass
 
@@ -786,6 +804,10 @@ async def callback_delete_task(callback: types.CallbackQuery):
         pass
 
 async def main():
+    if not bot:
+        print("❌ Хатолик: BOT_TOKEN созланмаганлиги сабабли бот ишга тушмади!")
+        return
+
     print("Тасбеҳ боти ва веб-сервер ишга тушмоқда...")
     config = uvicorn.Config(app, host="0.0.0.0", port=PORT, log_level="info")
     server = uvicorn.Server(config)
