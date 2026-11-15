@@ -501,14 +501,12 @@ async def handle_monetag_postback(
     secret: str = "",
     reward_event_type: str = ""
 ):
-    # 1. Проверяем секретный ключ
     if not MONETAG_SECRET or secret != MONETAG_SECRET:
         raise HTTPException(status_code=403, detail="Invalid secret key")
 
-    # 2. Проверяем, что реклама засчитана как оплаченная
     if reward_event_type == "valued" and userid and userid.isdigit():
         user_id = int(userid)
-        reward = 10 # Керакли балл миқдори (хоҳласангиз ўзгартиришингиз мумкин)
+        reward = 10
 
         if user_id not in user_balances:
             user_balances[user_id] = 0
@@ -818,4 +816,4 @@ async def main():
     )
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.main() if hasattr(asyncio, "main") else asyncio.run(main())
