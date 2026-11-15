@@ -1,731 +1,951 @@
-import os
-import asyncio
-import json
-import time
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command
-from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.context import FSMContext
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Муборак Тасбеҳ ва Намоз вақтлари</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src='//libtl.com/sdk.js' data-zone='12215662' data-sdk='show_12215662'></script>
+<style>
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+body {
+  background: linear-gradient(rgba(11, 38, 47, 0.45), rgba(5, 20, 25, 0.8)), 
+  url('https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?q=80&w=1000&auto=format&fit=crop') no-repeat center center fixed;
+  background-size: cover;
+  color: #ffffff;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 15px;
+  overflow-x: hidden;
+  position: relative;
+}
+.sky-elements {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 60%;
+  pointer-events: none; z-index: 1;
+}
+.moon {
+  position: absolute;
+  top: 52px; right: 12px;
+  width: 34px; height: 34px;
+  background: transparent;
+  border-radius: 50%;
+  box-shadow: 7px 2px 0 0 #f1c40f;
+  filter: drop-shadow(0 0 8px rgba(241, 196, 15, 0.8));
+  z-index: 3;
+}
+.stars {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background-image: 
+    radial-gradient(white 1.5px, transparent 0),
+    radial-gradient(rgba(241, 196, 15, 0.8) 2px, transparent 0);
+  background-size: 60px 60px, 90px 90px;
+  opacity: 0.8;
+}
+.header {
+  text-align: center;
+  width: 100%;
+  z-index: 2;
+}
+.top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding: 0 2px;
+}
+.top-btns {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.action-btn {
+  background: rgba(15, 40, 30, 0.85);
+  border: 1px solid #f1c40f;
+  color: #f1c40f;
+  padding: 5px 8px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: bold;
+  cursor: pointer;
+  backdrop-filter: blur(5px);
+}
+.title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f1c40f;
+  text-shadow: 0 2px 6px rgba(0,0,0,0.8);
+}
+.zikr-selector {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  width: 100%;
+  padding: 2px 0;
+  scrollbar-width: none;
+  z-index: 2;
+  margin-top: 5px;
+}
+.zikr-selector::-webkit-scrollbar { display: none; }
+.zikr-tab {
+  background: rgba(10, 30, 25, 0.8);
+  border: 1px solid rgba(241, 196, 15, 0.5);
+  color: #e2e8f0;
+  padding: 5px 11px;
+  border-radius: 12px;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: all 0.25s ease;
+}
+.zikr-tab.active {
+  background: linear-gradient(135deg, #f1c40f, #d4ac0d);
+  color: #0b3c2e;
+  font-weight: bold;
+  border-color: #f1c40f;
+  box-shadow: 0 0 12px rgba(241, 196, 15, 0.7);
+}
+.widget-panel {
+  background: rgba(8, 28, 22, 0.8);
+  border: 1px solid rgba(241, 196, 15, 0.45);
+  border-radius: 12px;
+  padding: 7px 12px;
+  margin-top: 8px;
+  margin-bottom: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  backdrop-filter: blur(6px);
+  z-index: 2;
+  width: 100%;
+}
+.live-clock {
+  font-size: 17px;
+  font-weight: bold;
+  color: #f1c40f;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+}
+.next-prayer-info {
+  font-size: 11px;
+  color: #a3e4d7;
+  text-align: right;
+  line-height: 1.3;
+}
+.next-prayer-info span {
+  color: #f1c40f;
+  font-weight: bold;
+}
+.counter-container {
+  text-align: center;
+  margin: auto 0;
+  z-index: 2;
+}
+.total-counter-badge {
+  font-size: 12px;
+  color: #f1c40f;
+  background: rgba(11, 38, 47, 0.75);
+  border: 1px solid rgba(241, 196, 15, 0.4);
+  padding: 3px 12px;
+  border-radius: 20px;
+  display: inline-block;
+  margin-bottom: 6px;
+  backdrop-filter: blur(4px);
+  font-weight: 500;
+}
+.milestone-toast {
+  font-size: 12px;
+  color: #0b3c2e;
+  background: #f1c40f;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-weight: bold;
+  display: inline-block;
+  margin-bottom: 4px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.milestone-toast.show { opacity: 1; }
+.counter-value {
+  font-size: 64px;
+  font-weight: 700;
+  color: #f1c40f;
+  text-shadow: 0 0 20px rgba(241, 196, 15, 0.9), 0 2px 5px rgba(0,0,0,0.8);
+  line-height: 1;
+}
+.counter-arabic {
+  font-size: 20px;
+  color: #ffffff;
+  margin-top: 6px;
+  font-weight: bold;
+  text-shadow: 0 2px 6px rgba(0,0,0,0.9);
+  padding: 0 10px;
+  direction: rtl;
+}
+.counter-label {
+  font-size: 12px;
+  color: #a3e4d7;
+  margin-top: 4px;
+  font-weight: 500;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+}
+.tap-button-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 6px;
+  z-index: 2;
+}
+.tap-button {
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #165b41 0%, #072e20 100%);
+  border: 3px solid #f1c40f;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.7), inset 0 4px 10px rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  color: #f1c40f;
+  font-size: 24px;
+  font-weight: bold;
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+  outline: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.7);
+}
+.tap-button:active {
+  transform: scale(0.93);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5), inset 0 2px 5px rgba(0, 0, 0, 0.5);
+}
+.ads-button-container {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 6px;
+  z-index: 2;
+}
+.ads-btn {
+  background: linear-gradient(135deg, #f39c12, #d35400);
+  border: 1px solid #f1c40f;
+  color: #ffffff;
+  width: 100%;
+  max-width: 340px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: bold;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(243, 156, 18, 0.4);
+  line-height: 1.3;
+}
+.footer {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 2;
+}
+.reset-btn {
+  background: linear-gradient(135deg, #f1c40f, #d4ac0d);
+  border: 1px solid #fff;
+  color: #0b3c2e;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(241, 196, 15, 0.5);
+}
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0, 0, 0, 0.78);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 100;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+  backdrop-filter: blur(5px);
+}
+.modal-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+.modal-content {
+  background: linear-gradient(135deg, #0b3c2e, #062e21);
+  border: 2px solid #f1c40f;
+  width: 92%;
+  max-width: 370px;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 16px;
+  border-radius: 18px;
+  text-align: center;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.85);
+}
+.modal-title {
+  font-size: 16px;
+  color: #f1c40f;
+  margin-bottom: 10px;
+  font-weight: bold;
+}
+.modal-body {
+  font-size: 12px;
+  color: #e2e8f0;
+  margin-bottom: 14px;
+  line-height: 1.4;
+  text-align: left;
+  background: rgba(0,0,0,0.28);
+  padding: 10px;
+  border-radius: 10px;
+}
+.rating-row, .prayer-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.rating-row:last-child, .prayer-row:last-child { border-bottom: none; }
+.modal-close-btn {
+  background: linear-gradient(135deg, #f1c40f, #d4ac0d);
+  border: none;
+  color: #062e21;
+  padding: 7px 18px;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 12px;
+}
+.audio-test-btn {
+  background: rgba(241, 196, 15, 0.15);
+  border: 1px solid #f1c40f;
+  color: #f1c40f;
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+.select-city {
+  width: 100%;
+  padding: 7px;
+  background: #072e20;
+  border: 1px solid #f1c40f;
+  color: #fff;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+.collection-card {
+  background: rgba(15, 45, 35, 0.85);
+  border: 1px solid rgba(241, 196, 15, 0.4);
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+.collection-card .title-uz {
+  font-size: 13px;
+  font-weight: bold;
+  color: #f1c40f;
+  margin-bottom: 4px;
+}
+.collection-card .ar-text {
+  font-size: 16px;
+  color: #ffffff;
+  text-align: right;
+  margin: 4px 0;
+  direction: rtl;
+}
+.collection-card .meaning {
+  font-size: 11px;
+  color: #a3e4d7;
+  font-style: italic;
+  margin-bottom: 6px;
+}
+.select-zikr-btn {
+  background: #f1c40f;
+  color: #0b3c2e;
+  border: none;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: bold;
+  cursor: pointer;
+  float: right;
+}
+</style>
+</head>
+<body>
+<div class="sky-elements">
+  <div class="stars"></div>
+  <div class="moon"></div>
+</div>
 
-# Настройки бота
-TOKEN = os.getenv("BOT_TOKEN", "9165298433:AAHaiuVQHEcGT9ziWetjgbJ_tPUiF3Cy2pw")
-ADMIN_ID = int(os.getenv("ADMIN_ID", "8274122612"))
+<div class="header">
+  <div class="top-row">
+    <div class="title" id="appTitle">✨ Тасбеҳ & Намоз ✨</div>
+    <div class="top-btns">
+      <button class="action-btn" id="collectionBtn">📚 Тўплам</button>
+      <button class="action-btn" id="prayerBtn">🕌 Намоз</button>
+      <button class="action-btn" id="ratingBtn">📊 Статистика</button>
+      <button class="action-btn" id="langToggleBtn">🌐 UZ</button>
+    </div>
+  </div>
 
-# WEBAPP_URL ни янги репозиторий манзилига ёки GitHub Pages га мослаб қўямиз
-# Агар GitHub Pages ёқилган бўлса: "https://rakhmatjonablakulov-dev.github.io/tasbeh_bot/"
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://rakhmatjonablakulov-dev.github.io/tasbeh_bot/")
+  <div class="zikr-selector" id="zikrSelector">
+    <div class="zikr-tab active" data-index="0">Субҳаналлоҳ</div>
+    <div class="zikr-tab" data-index="1">Алҳамдулиллаҳ</div>
+    <div class="zikr-tab" data-index="2">Аллоҳу акбар</div>
+    <div class="zikr-tab" data-index="3">Астағфируллоҳ</div>
+    <div class="zikr-tab" data-index="4">Саловат</div>
+    <div class="zikr-tab" data-index="5">Зикрлар</div>
+  </div>
 
-bot = Bot(token=TOKEN)
-dp = Dispatcher()
+  <div class="widget-panel">
+    <div class="live-clock" id="liveClock">00:00:00</div>
+    <div class="next-prayer-info" id="nextPrayerInfo">
+      <span id="nextLabel">Кейинги:</span> <span id="nextPrayerName">--</span><br>
+      <span id="nextPrayerCountdown">--:--:--</span>
+    </div>
+  </div>
+</div>
 
-TASKS_FILE = "tasks.json"
-USERS_FILE = "users_data.json"
+<div class="counter-container">
+  <div><span class="milestone-toast" id="milestoneToast">✨ 33 та тўлди! ✨</span></div>
+  <div class="total-counter-badge" id="totalBadge">Жами зикр: 0</div>
+  <div class="counter-value" id="counter">0</div>
+  <div class="counter-arabic" id="arabicText">سُبْحَانَ ٱللَّهِ</div>
+  <div class="counter-label" id="zikrLabel">Субҳаналлоҳ марта ўқилди</div>
+</div>
 
-# --- МАЪЛУМОТЛАРНИ САҚЛАШ ВА ЎҚИШ ---
-def load_tasks():
-    if os.path.exists(TASKS_FILE):
-        try:
-            with open(TASKS_FILE, "r", encoding="utf-8") as f:
-                tasks = json.load(f)
-                current_time = time.time()
-                
-                active_tasks = []
-                for task in tasks:
-                    expires_at = task.get('expires_at')
-                    if expires_at is None or expires_at > current_time:
-                        active_tasks.append(task)
-                
-                if len(active_tasks) != len(tasks):
-                    save_tasks(active_tasks)
-                    
-                return active_tasks
-        except Exception:
-            pass
-            
-    return [                 
-        {"id": 1, "title": "📢 Расмий каналга обуна бўлиш", "reward": 50, "url": "https://t.me/telegram", "expires_at": None},
-        {"id": 2, "title": "⭐ Лойиҳани қўллаб-қувватлаш", "reward": 30, "url": "https://t.me/telegram", "expires_at": None}
-    ]
+<div class="tap-button-container">
+  <button class="tap-button" id="tapBtn">
+    <span id="tapBtnText">Зикр</span>
+    <span id="cycleIndicator" style="font-size: 11px; color: #a3e4d7; margin-top: 2px;">0 / 33</span>
+  </button>
+</div>
 
-def save_tasks(tasks):
-    with open(TASKS_FILE, "w", encoding="utf-8") as f:
-        json.dump(tasks, f, ensure_ascii=False, indent=4)
+<div class="ads-button-container">
+  <button class="ads-btn" id="adsBtn">
+    <span id="adsTitleText">⭐ Реклама кўриш орқали балл олиш ⭐</span><br>
+    <span id="adsSubText" style="font-size: 9px; color: #ffeaa7; font-weight: normal;">Босинг ва ҳисобингизга балл қўшинг.</span>
+  </button>
+</div>
 
-def delete_task_by_id(task_id):
-    tasks = load_tasks()
-    tasks = [t for t in tasks if t['id'] != task_id]
-    save_tasks(tasks)
-    return tasks
+<div class="footer">
+  <span style="font-size: 10px; color: #f1c40f; opacity: 0.9;">🌙 Namoz & Zikr Edition</span>
+  <button class="reset-btn" id="resetBtn">Ноллаш 🔄</button>
+</div>
 
-def load_users_data():
-    if os.path.exists(USERS_FILE):
-        try:
-            with open(USERS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                return {
-                    "users": set(data.get("users", [ADMIN_ID])),
-                    "balances": {int(k): v for k, v in data.get("balances", {}).items()},
-                    "names": {int(k): v for k, v in data.get("names", {}).items()},
-                    "referred": set(data.get("referred", [])),
-                    "completed_tasks": {int(k): v for k, v in data.get("completed_tasks", {}).items()}
-                }
-        except Exception:
-            pass
-    return {
-        "users": {ADMIN_ID},
-        "balances": {ADMIN_ID: 1000},
-        "names": {ADMIN_ID: "Admin"},
-        "referred": set(),
-        "completed_tasks": {}
+<!-- Намоз вақтлари модалкаси -->
+<div class="modal-overlay" id="prayerModal">
+  <div class="modal-content">
+    <div class="modal-title" id="prayerModalTitle">🕌 Намоз вақтлари ва Азон</div>
+    <select class="select-city" id="citySelect">
+      <option value="Tashkent">Тошкент</option>
+      <option value="Samarkand">Самарқанд</option>
+      <option value="Bukhara">Бухоро</option>
+      <option value="Namangan">Наманган</option>
+      <option value="Andijan">Андижон</option>
+      <option value="Fergana">Фарғона</option>
+      <option value="Khiva">Хоразм / Хива</option>
+    </select>
+    <div class="modal-body" id="prayerTimesList">Юкланмоқда...</div>
+    <button class="audio-test-btn" id="testAzhanBtn">🔊 Азонни синаб кўриш / Тўхтатиш</button>
+    <div style="font-size: 10px; color: #a3e4d7; margin-bottom: 10px;" id="azhanNote">
+      Вақти келганда Азон овози автоматик янграйди.
+    </div>
+    <button class="modal-close-btn" id="closePrayerModal">Ёпиш</button>
+  </div>
+</div>
+
+<!-- Статистика модалкаси -->
+<div class="modal-overlay" id="ratingModal">
+  <div class="modal-content">
+    <div class="modal-title" id="modalTitleText">📊 Ҳар бир зикрнинг миқдори</div>
+    <div class="modal-body" id="ratingModalBody">Юкланмоқда...</div>
+    <button class="modal-close-btn" id="closeModalBtn">Ёпиш</button>
+  </div>
+</div>
+
+<!-- Тўплам модалкаси -->
+<div class="modal-overlay" id="collectionModal">
+  <div class="modal-content">
+    <div class="modal-title" id="collectionModalTitle">📚 Зикр ва Саловатлар тўплами</div>
+    <div class="modal-body" id="collectionModalBody"></div>
+    <button class="modal-close-btn" id="closeCollectionModal">Ёпиш</button>
+  </div>
+</div>
+
+<audio id="azhanAudio" src="https://islamic-audio.com/Azan/makkah.mp3" preload="auto"></audio>
+
+<script>
+const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+if (tg) { try { tg.expand(); } catch (e) {} }
+
+const translations = {
+  uz: {
+    label: "🌐 UZ",
+    ratingText: "📊 Статистика",
+    prayerText: "🕌 Намоз",
+    collectionText: "📚 Тўплам",
+    totalText: "Жами зикр",
+    tap: "Зикр",
+    reset: "Ноллаш 🔄",
+    suffix: "марта ўқилди",
+    nextLabel: "Кейинги:",
+    adsTitle: "⭐ Реклама кўриш орқали балл олиш ⭐",
+    adsSub: "Босинг ва ҳисобингизга балл қўшинг.",
+    prayerModalTitle: "🕌 Намоз вақтлари ва Азон",
+    statModalTitle: "📊 Ҳар бир зикрнинг миқдори",
+    collModalTitle: "📚 Зикр ва Саловатлар тўплами",
+    close: "Ёпиш",
+    confirmReset: "Ушбу зикр ҳисобини ноль ҳолатга келтиришга ишончингиз комилми?",
+    selectBtn: "Танлаш 🎯",
+    grandTotalLabel: "Жами зикрлар:",
+    unit: "та",
+    cityLabel: "📍 Шаҳар:",
+    prayers: { Fajr: "Бомдод", Dhuhr: "Пешин", Asr: "Аср", Maghrib: "Шом", Isha: "Хуфтон" }
+  },
+  ru: {
+    label: "🌐 RU",
+    ratingText: "📊 Статистика",
+    prayerText: "🕌 Намаз",
+    collectionText: "📚 Сборник",
+    totalText: "Всего зикров",
+    tap: "Зикр",
+    reset: "Сброс 🔄",
+    suffix: "прочитано раз",
+    nextLabel: "Следующий:",
+    adsTitle: "⭐ Получить балл за просмотр рекламы ⭐",
+    adsSub: "Нажмите и добавьте баллы на баланс.",
+    prayerModalTitle: "🕌 Время намаза и Азан",
+    statModalTitle: "📊 Количество каждого зикра",
+    collModalTitle: "📚 Сборник зикров и салаватов",
+    close: "Закрыть",
+    confirmReset: "Вы уверены, что хотите обнулить счётчик этого зикра?",
+    selectBtn: "Выбрать 🎯",
+    grandTotalLabel: "Всего зикров:",
+    unit: "раз",
+    cityLabel: "📍 Город:",
+    prayers: { Fajr: "Фаджр", Dhuhr: "Зухр", Asr: "Аср", Maghrib: "Магриб", Isha: "Иша" }
+  }
+};
+
+let currentLangCode = 'uz';
+let currentZikrIndex = 0;
+let userBalance = parseInt(localStorage.getItem('user_balance')) || 0;
+
+const i18nZikrs = [
+  { uz: "Субҳаналлоҳ", ru: "Субханаллах", arabic: "سُبْحَانَ ٱللَّهِ", key: "tasbih_subhanallah" },
+  { uz: "Алҳамдулиллаҳ", ru: "Альхамдулиллах", arabic: "ٱلْحَمْدُ لِلَّهِ", key: "tasbih_alhamdulillah" },
+  { uz: "Аллоҳу акбар", ru: "Аллаху акбар", arabic: "ٱللَّهُ أَكْبَرُ", key: "tasbih_allahuakbar" },
+  { uz: "Астағфируллоҳ", ru: "Астагфируллах", arabic: "أَسْتَغْفِرُ ٱللَّهَ", key: "tasbih_astagfirullah" },
+  { uz: "Саловат", ru: "Салават", arabic: "صَلَّى ٱللَّهُ عَلَيْهِ وَسَلَّمَ", key: "tasbih_salovat" },
+  { uz: "Зикрлар", ru: "Другие зикры", arabic: "لَا إِلَٰهَ إِلَّا ٱللَّهُ", key: "tasbih_other" }
+];
+
+const zikrCollectionData = [
+  {
+    uz: "Субҳаналлоҳи ва биҳамдиҳи",
+    ru: "Субханаллахи ва бихамдихи",
+    arabic: "سُبْحَانَ اللهِ وَبِحَمْدِهِ",
+    meaningUz: "Аллоҳга ҳамд айтиш билан Уни поклаб ёд этаман.",
+    meaningRu: "Пречист Аллах и хвала Ему.",
+    targetIndex: 0
+  },
+  {
+    uz: "Аллоҳумма солли ала Муҳаммадин ва ала али Муҳаммад",
+    ru: "Аллахумма салли 'аля Мухаммадин ва 'аля али Мухаммад",
+    arabic: "اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ",
+    meaningUz: "Эй Аллоҳ! Муҳаммадга ва Муҳаммаднинг оиласига салавот юборгин.",
+    meaningRu: "О Аллах, благослови Мухаммада и род Мухаммада.",
+    targetIndex: 4
+  },
+  {
+    uz: "Ла ҳавла ва ла қуввата илла биллаҳ",
+    ru: "Ля хавля ва ля куввата илля биллях",
+    arabic: "لَا حَوْلَ وَلَا قُوَّةَ إِلَّا بِٱللَّهِ",
+    meaningUz: "Куч ва қувват фақат Буюк ва Олий Аллоҳдадир.",
+    meaningRu: "Нет силы и могущества кроме как у Аллаха.",
+    targetIndex: 5
+  },
+  {
+    uz: "Астағфируллоҳал азийм ва атубу илайҳ",
+    ru: "Астагфируллахаль 'Азима ва атубу iляйх",
+    arabic: "أَسْتَغْفِرُ اللهَ الْعَظِيمَ وَأَتُوبُ إِلَيْهِ",
+    meaningUz: "Буюк Аллоҳдан мағфират сўрайман ва Унга тавба қиламан.",
+    meaningRu: "Прошу прощения у Великого Аллаха и каюсь перед Ним.",
+    targetIndex: 3
+  },
+  {
+    uz: "Субҳаналлоҳил азийм ва биҳамдиҳи",
+    ru: "Субханаллахиль 'Азими ва бихамдихи",
+    arabic: "سُبْحَانَ اللهِ الْعَظِيمِ وَبِحَمْدِهِ",
+    meaningUz: "Буюк Аллоҳга ҳамд ва тасбеҳ айтаман.",
+    meaningRu: "Пречист Великий Аллах и хвала Ему.",
+    targetIndex: 0
+  }
+];
+
+const langToggleBtn = document.getElementById('langToggleBtn');
+const ratingBtn = document.getElementById('ratingBtn');
+const prayerBtn = document.getElementById('prayerBtn');
+const collectionBtn = document.getElementById('collectionBtn');
+const counterDisplay = document.getElementById('counter');
+const totalBadge = document.getElementById('totalBadge');
+const arabicText = document.getElementById('arabicText');
+const zikrLabel = document.getElementById('zikrLabel');
+const tapBtn = document.getElementById('tapBtn');
+const tapBtnText = document.getElementById('tapBtnText');
+const cycleIndicator = document.getElementById('cycleIndicator');
+const milestoneToast = document.getElementById('milestoneToast');
+const adsBtn = document.getElementById('adsBtn');
+const resetBtn = document.getElementById('resetBtn');
+const tabs = document.querySelectorAll('.zikr-tab');
+const liveClock = document.getElementById('liveClock');
+const nextPrayerName = document.getElementById('nextPrayerName');
+const nextPrayerCountdown = document.getElementById('nextPrayerCountdown');
+const azhanAudio = document.getElementById('azhanAudio');
+const citySelect = document.getElementById('citySelect');
+
+let prayerTimings = {
+  "Tashkent": { Fajr: "05:30", Dhuhr: "12:15", Asr: "15:40", Maghrib: "17:10", Isha: "18:40" },
+  "Samarkand": { Fajr: "05:35", Dhuhr: "12:20", Asr: "15:45", Maghrib: "17:15", Isha: "18:45" },
+  "Bukhara": { Fajr: "05:45", Dhuhr: "12:30", Asr: "15:55", Maghrib: "17:25", Isha: "18:55" },
+  "Namangan": { Fajr: "05:25", Dhuhr: "12:10", Asr: "15:35", Maghrib: "17:05", Isha: "18:35" },
+  "Andijan": { Fajr: "05:20", Dhuhr: "12:05", Asr: "15:30", Maghrib: "17:00", Isha: "18:30" },
+  "Fergana": { Fajr: "05:23", Dhuhr: "12:08", Asr: "15:33", Maghrib: "17:03", Isha: "18:33" },
+  "Khiva": { Fajr: "05:55", Dhuhr: "12:40", Asr: "16:05", Maghrib: "17:35", Isha: "19:05" }
+};
+
+let selectedCity = localStorage.getItem('selected_city') || "Tashkent";
+citySelect.value = selectedCity;
+
+async function fetchLivePrayerTimes(city) {
+  try {
+    const res = await fetch(`https://api.aladhan.com/v1/timingsByCity?city=${city}&country=Uzbekistan&method=3&school=1`);
+    const data = await res.json();
+    if (data && data.data && data.data.timings) {
+      const t = data.data.timings;
+      prayerTimings[city] = {
+        Fajr: t.Fajr.slice(0, 5),
+        Dhuhr: t.Dhuhr.slice(0, 5),
+        Asr: t.Asr.slice(0, 5),
+        Maghrib: t.Maghrib.slice(0, 5),
+        Isha: t.Isha.slice(0, 5)
+      };
+      renderPrayerTimes();
     }
+  } catch (e) {}
+}
+fetchLivePrayerTimes(selectedCity);
 
-def save_users_data():
-    data = {
-        "users": list(users),
-        "balances": user_balances,
-        "names": user_names,
-        "referred": list(referred_users),
-        "completed_tasks": user_completed_tasks
+let audioUnlocked = false;
+document.body.addEventListener('click', () => {
+  if (!audioUnlocked) {
+    azhanAudio.play().then(() => {
+      azhanAudio.pause();
+      azhanAudio.currentTime = 0;
+      audioUnlocked = true;
+    }).catch(() => {});
+  }
+}, { once: true });
+
+function calculateTotalZikr() {
+  return i18nZikrs.reduce((sum, zikr) => {
+    return sum + (parseInt(localStorage.getItem(zikr.key)) || 0);
+  }, 0);
+}
+
+function updateUI() {
+  const t = translations[currentLangCode];
+  langToggleBtn.textContent = t.label;
+  ratingBtn.textContent = t.ratingText;
+  prayerBtn.textContent = t.prayerText;
+  collectionBtn.textContent = t.collectionText;
+  tapBtnText.textContent = t.tap;
+  resetBtn.textContent = t.reset;
+  document.getElementById('nextLabel').textContent = t.nextLabel;
+  document.getElementById('adsTitleText').textContent = t.adsTitle;
+  document.getElementById('adsSubText').textContent = t.adsSub;
+  document.getElementById('prayerModalTitle').textContent = t.prayerModalTitle;
+  document.getElementById('modalTitleText').textContent = t.statModalTitle;
+  document.getElementById('collectionModalTitle').textContent = t.collModalTitle;
+  document.getElementById('closePrayerModal').textContent = t.close;
+  document.getElementById('closeModalBtn').textContent = t.close;
+  document.getElementById('closeCollectionModal').textContent = t.close;
+
+  tabs.forEach((tab, idx) => {
+    tab.textContent = i18nZikrs[idx][currentLangCode];
+    tab.classList.toggle('active', idx === currentZikrIndex);
+  });
+
+  const zikrObj = i18nZikrs[currentZikrIndex];
+  const count = parseInt(localStorage.getItem(zikrObj.key)) || 0;
+  counterDisplay.textContent = count;
+  cycleIndicator.textContent = `${count % 33} / 33`;
+  totalBadge.textContent = `${t.totalText}: ${calculateTotalZikr()}`;
+  arabicText.textContent = zikrObj.arabic;
+  zikrLabel.textContent = `${zikrObj[currentLangCode]} ${t.suffix}`;
+}
+
+let lastAzhanPlayedMinute = "";
+
+function updateClockAndPrayers() {
+  const now = new Date();
+  const h = String(now.getHours()).padStart(2, '0');
+  const m = String(now.getMinutes()).padStart(2, '0');
+  const s = String(now.getSeconds()).padStart(2, '0');
+  liveClock.textContent = `${h}:${m}:${s}`;
+
+  const times = prayerTimings[selectedCity];
+  const currentStr = `${h}:${m}`;
+  const tPrayers = translations[currentLangCode].prayers;
+
+  for (let [key, timeVal] of Object.entries(times)) {
+    if (currentStr === timeVal && lastAzhanPlayedMinute !== currentStr) {
+      lastAzhanPlayedMinute = currentStr;
+      azhanAudio.play().catch(() => {});
     }
-    with open(USERS_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
-
-tasks_list = load_tasks()
-db_data = load_users_data()
-users = db_data["users"]
-user_balances = db_data["balances"]
-user_names = db_data["names"]
-referred_users = db_data["referred"]
-user_completed_tasks = db_data["completed_tasks"]
-
-class WithdrawStates(StatesGroup):
-    waiting_for_details = State()
-
-class AdminBroadcast(StatesGroup):
-    waiting_for_message = State()
-
-class AdminBalance(StatesGroup):
-    waiting_user_id = State()
-    waiting_amount = State()
-
-class AdminTask(StatesGroup):
-    waiting_title = State()
-    waiting_reward = State()
-    waiting_url = State()
-    waiting_hours = State()
-
-def get_main_menu():
-    builder = ReplyKeyboardBuilder()
-    builder.button(text="📿 Т А С Б Е Х Н И  О Ч И Ш")
-    builder.button(text="💰 Балансим")
-    builder.button(text="💳 Пулни ечиб олиш")
-    builder.button(text="🏆 Рейтинг")
-    builder.button(text="👥 Дўстларни таклиф")
-    builder.button(text="📋 Вазифалар")
-    builder.button(text="⭐ Рекламани кўриш")
-    builder.adjust(1, 2, 2, 2)
-    return builder.as_markup(resize_keyboard=True)
-
-def get_admin_menu():
-    builder = ReplyKeyboardBuilder()
-    builder.button(text="📊 Статистика")
-    builder.button(text="👥 Фойдаланувчилар")
-    builder.button(text="📢 Рассылка юбориш")
-    builder.button(text="💰 Балансни бошқариш")
-    builder.button(text="📋 Вазифа қўшиш")
-    builder.button(text="📋 Вазифаларни бошқариш")
-    builder.button(text="⬅️ Асосий меню")
-    builder.adjust(2, 2, 2, 2, 1)
-    return builder.as_markup(resize_keyboard=True)
-
-@dp.message(Command("start"))
-async def cmd_start(message: types.Message):
-    user_id = message.from_user.id
-    users.add(user_id)
-    user_names[user_id] = message.from_user.first_name or "Foydalanuvchi"
-
-    if user_id not in user_balances:
-        user_balances[user_id] = 0
-
-    args = message.text.split()
-    if len(args) > 1 and args[1].isdigit():
-        referrer_id = int(args[1])
-
-        if referrer_id != user_id and user_id not in referred_users:
-            referred_users.add(user_id)
-            if referrer_id not in user_balances:
-                user_balances[referrer_id] = 0
-
-            user_balances[referrer_id] += 2000
-
-            try:
-                ref_name = message.from_user.first_name or "Янги дўстингиз"
-                await bot.send_message(
-                    referrer_id,
-                    f"🎉 <b>Табриклаймиз!</b>\n\n"
-                    f"👥 Сизнинг реферал ҳаволангиз орқали <b>{ref_name}</b> ботга аъзо бўлди!\n"
-                    f"💎 Ҳисобингизга <b>+2000 балл</b> қўшилди.",
-                    parse_mode="HTML"
-                )
-            except Exception:
-                pass
-
-    save_users_data()
-    user_name = message.from_user.first_name or "Қадрли инсон"
-
-    welcome_text = (
-        f"✨ <b>Ассалому алайкум ва роҳматуллоҳи ва барокатуҳ, {user_name}!</b>\n\n"
-        f"🌙 <b>«Муборак Тасбеҳ ва зикрлар»</b> ботига хуш келибсиз!\n\n"
-        f"<i>«Огоҳ бўлингизким, Аллоҳни зикр қилиш билан қалблар ором олур!»</i> (Раъд сураси, 28-оят).\n\n"
-        f"👇 <i>Қуйидаги менюдан керакли бўлимни танланг:</i>"
-    )
-
-    await message.answer(welcome_text, reply_markup=get_main_menu(), parse_mode="HTML")
-
-@dp.message(F.text == "⬅️ Асосий меню")
-async def back_to_main_menu(message: types.Message, state: FSMContext):
-    await state.clear()
-    await message.answer("✨ Асосий менюга қайтдингиз.", reply_markup=get_main_menu())
-
-@dp.message(F.text == "📿 Т А С Б Е Х Н И  О Ч И Ш")
-async def open_tasbih(message: types.Message):
-    builder = InlineKeyboardBuilder()
-    builder.button(text="🚀 Мини-иловани ишга тушириш", web_app=types.WebAppInfo(url=WEBAPP_URL))
-    await message.answer(
-        "📿 <b>Т А С Б Е Х!</b>\n\n"
-        "Қуйидаги тугма орқали интерактив мини-иловага ўтинг ва зикр қилишни бошланг:",
-        reply_markup=builder.as_markup(),
-        parse_mode="HTML"
-    )
-
-@dp.message(F.text == "💰 Балансим")
-async def check_balance(message: types.Message):
-    user_id = message.from_user.id
-    balance = user_balances.get(user_id, 0)
-    await message.answer(
-        f"💰 <b>Сизнинг ҳисобингиз:</b>\n\n"
-        f"💎 Жорий баланс: <b>{balance} балл</b>\n"
-        f"💳 Энг кам пул ечиш миқдори: <b>500 000 балл</b>",
-        parse_mode="HTML",
-        reply_markup=get_main_menu()
-    )
-
-@dp.message(F.text == "💳 Пулни ечиб олиш")
-async def process_withdrawal(message: types.Message, state: FSMContext):
-    user_id = message.from_user.id
-    balance = user_balances.get(user_id, 0)
-    MIN_WITHDRAW = 500000
-
-    if balance < MIN_WITHDRAW:
-        needed = MIN_WITHDRAW - balance
-        await message.answer(
-            f"❌ <b>Пулни ечиб олиш учун балансингиз етарли эмас!</b>\n\n"
-            f"💎 Жорий балансингиз: <b>{balance} балл</b>\n"
-            f"📊 Энг кам миқдор: <b>{MIN_WITHDRAW} балл</b>\n"
-            f"⚠️ Пул чиқариш учун яна <b>({needed})</b> балл етмайди.\n\n"
-            "<i>Кўпроқ вазифаларни бажаринг ва дўстларингизни таклиф қилинг! (+2000 балл)</i>",
-            parse_mode="HTML",
-            reply_markup=get_main_menu()
-        )
-        return
-
-    await message.answer(
-        "💳 <b>Маблағни ечиб олиш маркази</b>\n\n"
-        f"💎 Балансингиз етарли: <b>{balance} балл</b>\n\n"
-        "Тўплаган балларни картага ёки телефон рақамига ўтказиш учун реквизитларингизни юборинг.\n\n"
-        "<i>(Масалан: 8600 1234 5678 9012 / Исм Шариф ва банк номи)</i>\n\n"
-        "❌ Бекор қилиш учун /cancel ни босинг.",
-        parse_mode="HTML"
-    )
-    await state.set_state(WithdrawStates.waiting_for_details)
-
-@dp.message(Command("cancel"))
-async def cancel_handler(message: types.Message, state: FSMContext):
-    await state.clear()
-    await message.answer("❌ Жараён бекор қилинди.", reply_markup=get_main_menu())
-
-@dp.message(WithdrawStates.waiting_for_details)
-async def receive_withdrawal_details(message: types.Message, state: FSMContext):
-    user = message.from_user
-    details = message.text
-    balance = user_balances.get(user.id, 0)
-
-    if balance < 500000:
-        await message.answer("❌ Балансингиз етарли эмас!", reply_markup=get_main_menu())
-        await state.clear()
-        return
-
-    withdrawn_amount = balance
-    user_balances[user.id] = 0
-    save_users_data()
-
-    admin_text = (
-        f"🔔 <b>Янги пул чиқариш сўрови!</b>\n\n"
-        f"👤 Фойдаланувчи: @{user.username or 'йўқ'} (ID: <code>{user.id}</code>)\n"
-        f"Исми: {user.first_name}\n"
-        f"💎 Ечилаётган сумма: <b>{withdrawn_amount} балл</b>\n"
-        f"💳 Реквизит:\n<code>{details}</code>"
-    )
-
-    try:
-        builder = InlineKeyboardBuilder()
-        builder.button(text="✅ Тўлаб берилди", callback_data=f"pay_yes_{user.id}_{withdrawn_amount}")
-        builder.button(text="❌ Рад этиш", callback_data=f"pay_no_{user.id}_{withdrawn_amount}")
-        builder.adjust(2)
-
-        await bot.send_message(ADMIN_ID, admin_text, reply_markup=builder.as_markup(), parse_mode="HTML")
-
-        await message.answer(
-            "✅ <b>Сўровингиз қабул қилинди!</b>\n\n"
-            "Администратор текширувидан кейин маблағ картангизга ўтказиб берилади.",
-            reply_markup=get_main_menu(),
-            parse_mode="HTML"
-        )
-    except Exception:
-        user_balances[user.id] += withdrawn_amount
-        save_users_data()
-        await message.answer("❌ Хатолик юз берди. Кейинроқ қайта уриниб кўринг.", reply_markup=get_main_menu())
-
-    await state.clear()
-
-@dp.callback_query(F.data.startswith("pay_"))
-async def admin_payment_decision(callback: types.CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("Сизда бунинг учун ҳуқуқ йўқ!", show_alert=True)
-        return
-
-    parts = callback.data.split("_")
-    action, user_id, amount = parts[1], int(parts[2]), int(parts[3])
-
-    if action == "yes":
-        await bot.send_message(user_id, "🎉 <b>Табриклаймиз!</b> Пул чиқариш сўровингиз тасдиқланди ва маблағ картангизга ўтказилди!", parse_mode="HTML")
-        await callback.message.edit_text(callback.message.text + "\n\n<b>✅ Статус: ТЎЛАНДИ ВА ЯКУНЛАНДИ</b>", parse_mode="HTML")
-    else:
-        user_balances[user_id] = user_balances.get(user_id, 0) + amount
-        save_users_data()
-        await bot.send_message(user_id, f"❌ Афсус, сўровингиз рад этилди. <b>{amount} балл</b> балансингизга қайтарилди.", parse_mode="HTML")
-        await callback.message.edit_text(callback.message.text + "\n\n<b>❌ Статус: РАД ЭТИЛДИ (Балл қайтарилди)</b>", parse_mode="HTML")
-
-    await callback.answer("Бажарилди!")
-
-@dp.message(F.text == "🏆 Рейтинг")
-async def show_leaderboard(message: types.Message):
-    sorted_users = sorted(user_balances.items(), key=lambda x: x[1], reverse=True)[:10]
-
-    text = (
-        "🏆 <b>Энг фаол фойдаланувчилар рейтинги (Топ-10)</b>\n\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "🏅 <b>Пешқадамлар рўйхати:</b>\n\n"
-    )
-
-    medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-
-    for index, (uid, balance) in enumerate(sorted_users):
-        name = user_names.get(uid, f"Фойдаланувчи {uid}")
-        medal = medals[index] if index < len(medals) else f"{index+1}."
-        text += f"{medal} <b>{name}</b> — 💎 <b>{balance} балл</b>\n\n"
-
-    await message.answer(text, parse_mode="HTML", reply_markup=get_main_menu())
-
-@dp.message(F.text == "👥 Дўстларни таклиф")
-async def process_referral(message: types.Message):
-    bot_info = await bot.get_me()
-    ref_link = f"https://t.me/{bot_info.username}?start={message.from_user.id}"
-
-    await message.answer(
-        "👥 <b>Дўстларни таклиф қилиш тизими</b>\n\n"
-        "Яқинларингизни таклиф қилинг ва ҳар бир таклиф қилинган дўстингиз учун <b>2000 балл</b> олиб боринг!\n\n"
-        "🔗 <b>Сизнинг шахсий линкингиз:</b>\n"
-        f"<code>{ref_link}</code>",
-        parse_mode="HTML"
-    )
-
-@dp.message(F.text == "📋 Вазифалар")
-async def process_tasks(message: types.Message):
-    global tasks_list
-    tasks_list = load_tasks()
-    
-    if not tasks_list:
-        await message.answer("📋 Ҳозирча янги вазифалар мавжуд эмас.", reply_markup=get_main_menu())
-        return
-    
-    user_id = message.from_user.id
-    completed_tasks_list = user_completed_tasks.get(user_id, [])
-    
-    active_tasks = [task for task in tasks_list if task['id'] not in completed_tasks_list]
-    
-    if not active_tasks:
-        await message.answer(
-            "🎉 <b>Табриклаймиз!</b>\n\nСиз барча мавжуд вазифаларни бажариб бўлдингиз.\nТегишли янги вазифалар қўшилишини кутинг!",
-            parse_mode="HTML",
-            reply_markup=get_main_menu()
-        )
-        return
-    
-    await message.answer("📋 <b>Кунлик вазифалар ва бонуслар</b>\n\nҚуйидаги вазифаларни бажариб баллар жамғаринг:", parse_mode="HTML")
-    
-    for task in active_tasks:
-        builder = InlineKeyboardBuilder()
-        builder.button(text="🔗 Бажариш", url=task['url'])
-        builder.button(text="🎁 Текшириш", callback_data=f"check_task_{task['id']}")
-        builder.adjust(2)
-        
-        await message.answer(
-            f"📌 <b>{task['title']}</b>\n🎁 Мукофот: <b>+{task['reward']} балл</b>",
-            reply_markup=builder.as_markup(),
-            parse_mode="HTML"
-        )
-
-@dp.callback_query(F.data.startswith(("check_task_", "noop_", "ok_task_")))
-async def task_callback_handler(callback: types.CallbackQuery):
-    if callback.data.startswith("noop_"):
-        await callback.answer("Сиз бу вазифани аллақачон бажаргансиз!", show_alert=True)
-        return
-
-    if callback.data.startswith("ok_task_"):
-        try:
-            await callback.message.delete()
-        except Exception:
-            pass
-        return
-
-    task_id = int(callback.data.split("_")[2])
-    user_id = callback.from_user.id
-
-    global tasks_list
-    tasks_list = load_tasks()
-    target_task = next((t for t in tasks_list if t['id'] == task_id), None)
-    
-    if not target_task:
-        await callback.answer("Вазифа топилмади ёки муддати тугаган!", show_alert=True)
-        try:
-            await callback.message.delete()
-        except Exception:
-            pass
-        return
-
-    if user_id not in user_completed_tasks:
-        user_completed_tasks[user_id] = []
-
-    if task_id in user_completed_tasks[user_id]:
-        await callback.answer("Сиз бу вазифа учун аллақачон балл олгансиз!", show_alert=True)
-        return
-
-    url = target_task['url']
-    if "t.me/" in url:
-        channel_username = "@" + url.split("t.me/")[-1].strip("/").split("?")[0]
-        try:
-            member = await bot.get_chat_member(chat_id=channel_username, user_id=user_id)
-            if member.status in ["left", "kicked"]:
-                await callback.answer(
-                    "❌ Сиз ҳали каналга обуна бўлмагансиз!\nИлтимос, аввал обуна бўлинг ва кейин текширинг.",
-                    show_alert=True
-                )
-                return
-        except Exception:
-            pass
-
-    user_completed_tasks[user_id].append(task_id)
-    user_balances[user_id] = user_balances.get(user_id, 0) + target_task['reward']
-    save_users_data()
-
-    await callback.answer("Вазифа муваффақиятли бажарилди!", show_alert=False)
-
-    ok_builder = InlineKeyboardBuilder()
-    ok_builder.button(text="OK", callback_data=f"ok_task_{task_id}")
-
-    await callback.message.answer(
-        f"✅ Ҳисобингизга <b>({target_task['reward']})</b> балл қўшилди!",
-        reply_markup=ok_builder.as_markup(),
-        parse_mode="HTML"
-    )
-
-    try:
-        await callback.message.delete()
-    except Exception:
-        pass
-
-@dp.message(F.text == "⭐ Рекламани кўриш")
-async def process_ads_view(message: types.Message):
-    builder = InlineKeyboardBuilder()
-    builder.button(text="⭐ Рекламани кўриш ва сақлаб қолиш", web_app=types.WebAppInfo(url=WEBAPP_URL))
-    await message.answer(
-        "⭐ <b>Тасбеҳлар сони учиб кетмаслиги учун</b>\n\n"
-        "Рекламани кўриш орқали лойиҳамизни қўллаб-қувватланг.",
-        reply_markup=builder.as_markup(),
-        parse_mode="HTML"
-    )
-
-@dp.message(Command("admin"))
-async def admin_panel(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("❌ Сизда бу буйруқни ишлатиш ҳуқуқи йўқ.")
-        return
-
-    await message.answer(
-        "🛠 <b>Бошқарув панели (Админ)</b>\n\n"
-        "Қуйидаги тугмалардан керакли бўлимни танланг:",
-        reply_markup=get_admin_menu(),
-        parse_mode="HTML"
-    )
-
-@dp.message(F.text == "📊 Статистика")
-async def admin_stats(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        return
-    await message.answer(
-        f"📊 <b>Тизим статистикаси:</b>\n\n"
-        f"• Жами фойдаланувчилар: <b>{len(users)} та</b>",
-        parse_mode="HTML",
-        reply_markup=get_admin_menu()
-    )
-
-@dp.message(F.text == "👥 Фойдаланувчилар")
-async def admin_users_list(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        return
-
-    if not users:
-        await message.answer("📭 Ҳозирча ботга кирган фойдаланувчилар йўқ.", reply_markup=get_admin_menu())
-        return
-
-    text = f"👥 <b>Ботдаги фойдаланувчилар рўйхати (Жами: {len(users)} та):</b>\n\n"
-
-    for count, uid in enumerate(list(users)[-30:], start=1):
-        name = user_names.get(uid, "Номаълум")
-        balance = user_balances.get(uid, 0)
-        text += f"{count}. {name} (ID: <code>{uid}</code>) — 💎 {balance} балл\n"
-
-    if len(users) > 30:
-        text += f"\n<i>...ва яна {len(users) - 30} та фойдаланувчи бор.</i>"
-
-    await message.answer(text, parse_mode="HTML", reply_markup=get_admin_menu())
-
-@dp.message(F.text == "📢 Рассылка юбориш")
-async def admin_broadcast_start(message: types.Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
-        return
-    await state.set_state(AdminBroadcast.waiting_for_message)
-    await message.answer(
-        "📢 Барча фойдаланувчиларга юбормоқчи бўлган хабарингизни юборинг:\n\n"
-        "<i>Бекор қилиш учун 'отмена' денг.</i>",
-        parse_mode="HTML"
-    )
-
-@dp.message(AdminBroadcast.waiting_for_message)
-async def admin_broadcast_send(message: types.Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
-        return
-
-    if message.text and message.text.lower() == "отмена":
-        await state.clear()
-        await message.answer("❌ Рассылка бекор қилинди.", reply_markup=get_admin_menu())
-        return
-
-    await state.clear()
-    await message.answer("🚀 Рассылка юбориш жараёни бошланди...")
-
-    success = 0
-    failed = 0
-    for uid in list(users):
-        try:
-            await message.copy_to(chat_id=uid)
-            success += 1
-            await asyncio.sleep(0.05)
-        except Exception:
-            failed += 1
-
-    await message.answer(
-        f"✅ <b>Рассылка муваффақиятли якунланди!</b>\n\n"
-        f"🟢 Етиб борди: <b>{success} та</b>\n"
-        f"🔴 Блок қилганлар: <b>{failed} та</b>",
-        parse_mode="HTML",
-        reply_markup=get_admin_menu()
-    )
-
-@dp.message(F.text == "💰 Балансни бошқариш")
-async def admin_balance_start(message: types.Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
-        return
-    await state.set_state(AdminBalance.waiting_user_id)
-    await message.answer("🆔 Балансини ўзгартирмоқчи бўлган фойдаланувчининг <b>Telegram ID</b> сини киритинг:", parse_mode="HTML")
-
-@dp.message(AdminBalance.waiting_user_id)
-async def admin_balance_get_id(message: types.Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
-        return
-    try:
-        target_id = int(message.text)
-        await state.update_data(target_id=target_id)
-        await state.set_state(AdminBalance.waiting_amount)
-        await message.answer(f"✍️ Фойдаланувчи (ID: {target_id}) учун қўшиладиган ёки айриладиган балл миқдорини киритинг (Масалан: <code>100</code> ёки <code>-50</code>):", parse_mode="HTML")
-    except ValueError:
-        await message.answer("❌ Фақат рақамлардан иборат ID киритинг:")
-
-@dp.message(AdminBalance.waiting_amount)
-async def admin_balance_get_amount(message: types.Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
-        return
-    try:
-        amount = int(message.text)
-        data = await state.get_data()
-        target_id = data.get("target_id")
-
-        user_balances[target_id] = user_balances.get(target_id, 0) + amount
-        save_users_data()
-        await state.clear()
-
-        await message.answer(
-            f"✅ Муваффақиятли! Фойдаланувчининг янги баланси: <b>{user_balances[target_id]} балл</b>",
-            parse_mode="HTML",
-            reply_markup=get_admin_menu()
-        )
-
-        try:
-            await bot.send_message(target_id, f"🎁 Админ томонидан балансингиз ўзгартирилди! Жорий баланс: {user_balances[target_id]} балл")
-        except Exception:
-            pass
-
-    except ValueError:
-        await message.answer("❌ Фақат бутун рақам киритинг (масалан: 50 ёки -20):")
-
-@dp.message(F.text == "📋 Вазифа қўшиш")
-async def admin_task_start(message: types.Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
-        return
-    await state.set_state(AdminTask.waiting_title)
-    await message.answer("✍️ Янги вазифа номини ва шартини киритинг (Масалан: <code>📢 Телеграм каналга обуна бўлиш</code>):", parse_mode="HTML")
-
-@dp.message(AdminTask.waiting_title)
-async def admin_task_get_title(message: types.Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
-        return
-    await state.update_data(title=message.text)
-    await state.set_state(AdminTask.waiting_reward)
-    await message.answer("💰 Ушбу вазифа учун бериладиган мукофот (балл) миқдорини рақамда киритинг (Масалан: <code>50</code>):", parse_mode="HTML")
-
-@dp.message(AdminTask.waiting_reward)
-async def admin_task_get_reward(message: types.Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
-        return
-    try:
-        reward = int(message.text)
-        await state.update_data(reward=reward)
-        await state.set_state(AdminTask.waiting_url)
-        await message.answer("🔗 Вазифа учун ҳаволани (URL ёки t.me манзилини) киритинг:")
-    except ValueError:
-        await message.answer("❌ Фақат рақам киритинг (масалан: 50):")
-
-@dp.message(AdminTask.waiting_url)
-async def admin_task_get_url(message: types.Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
-        return
-    url = message.text.strip()
-    await state.update_data(url=url)
-    await state.set_state(AdminTask.waiting_hours)
-    await message.answer(
-        "⏳ Вазифа қанча соат давомида амал қилишини киритинг:\n"
-        "<i>(Масалан: <code>24</code> соат, <code>48</code> соат ёки чексиз бўлса <code>0</code> рақамини киритинг)</i>",
-        parse_mode="HTML"
-    )
-
-@dp.message(AdminTask.waiting_hours)
-async def admin_task_get_hours(message: types.Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
-        return
-    try:
-        hours = int(message.text)
-        data = await state.get_data()
-        title = data.get("title")
-        reward = data.get("reward")
-        url = data.get("url")
-        
-        expires_at = None
-        if hours > 0:
-            expires_at = time.time() + (hours * 3600)
-            
-        global tasks_list
-        tasks_list = load_tasks() 
-        
-        new_id = max((t['id'] for t in tasks_list), default=0) + 1
-        new_task = {
-            "id": new_id, 
-            "title": title, 
-            "reward": reward, 
-            "url": url,
-            "expires_at": expires_at
-        }
-        
-        tasks_list.append(new_task)
-        save_tasks(tasks_list) 
-        
-        await state.clear()
-        
-        time_info = f"{hours} соат" if hours > 0 else "Чексиз (муддатсиз)"
-        await message.answer(
-            f"✅ <b>Янги вазифа муваффақиятли қўшилди!</b>\n\n"
-            f"📌 Номи: {title}\n"
-            f"🎁 Мукофот: {reward} балл\n"
-            f"⏳ Амал қилиш муддати: {time_info}\n"
-            f"🔗 Ҳавола: {url}",
-            parse_mode="HTML",
-            reply_markup=get_admin_menu()
-        )
-    except ValueError:
-        await message.answer("❌ Фақат бутун рақам киритинг (масалан: 24 ёки 0):")
-
-@dp.message(F.text == "📋 Вазифаларни бошқариш")
-async def admin_manage_tasks(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        return
-        
-    global tasks_list
-    tasks_list = load_tasks()
-    
-    if not tasks_list:
-        await message.answer("📭 Ҳозирча фаол вазифалар йўқ.", reply_markup=get_admin_menu())
-        return
-        
-    await message.answer("📋 <b>Амалдаги вазифалар рўйхати:</b>\nКеракли вазифани ўчириш учун қуйидаги тугмани босинг:", parse_mode="HTML")
-    
-    for task in tasks_list:
-        builder = InlineKeyboardBuilder()
-        builder.button(text="🗑 Ўчириш (Бекор қилиш)", callback_data=f"del_task_{task['id']}")
-        
-        expires_str = "Чексиз"
-        if task.get('expires_at'):
-            remaining = int((task['expires_at'] - time.time()) / 3600)
-            expires_str = f"Қолди: ~{remaining} соат" if remaining > 0 else "Муддати тугамоқда"
-
-        await message.answer(
-            f"📌 <b>{task['title']}</b>\n🎁 Мукофот: {task['reward']} балл\n⏳ Муддати: {expires_str}\n🔗 Ҳавола: {task['url']}",
-            reply_markup=builder.as_markup(),
-            parse_mode="HTML"
-        )
-
-@dp.callback_query(F.data.startswith("del_task_"))
-async def callback_delete_task(callback: types.CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("Сизда бу ҳуқуқ йўқ!", show_alert=True)
-        return
-        
-    task_id = int(callback.data.split("_")[2])
-    
-    remaining_tasks = delete_task_by_id(task_id)
-    global tasks_list
-    tasks_list = remaining_tasks
-    
-    await callback.answer("✅ Вазифа муваффақиятли ўчирилди!", show_alert=True)
-    
-    try:
-        await callback.message.edit_text("❌ <b>Ушбу вазифа бекор қилинди ва ўчирилди.</b>", parse_mode="HTML")
-    except Exception:
-        pass
-
-async def main():
-    print("Тасбеҳ боти муваффақиятли ишга тушди...")
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+  }
+
+  let nextKey = "Fajr";
+  let nextTimeStr = times.Fajr;
+  let isTomorrow = true;
+
+  for (let [key, timeVal] of Object.entries(times)) {
+    if (currentStr < timeVal) {
+      nextKey = key;
+      nextTimeStr = timeVal;
+      isTomorrow = false;
+      break;
+    }
+  }
+
+  const [nh, nm] = nextTimeStr.split(':').map(Number);
+  const targetDate = new Date(now);
+  targetDate.setHours(nh, nm, 0, 0);
+  if (isTomorrow) targetDate.setDate(targetDate.getDate() + 1);
+
+  const diffSec = Math.max(0, Math.floor((targetDate - now) / 1000));
+  const remH = String(Math.floor(diffSec / 3600)).padStart(2, '0');
+  const remM = String(Math.floor((diffSec % 3600) / 60)).padStart(2, '0');
+  const remS = String(diffSec % 60).padStart(2, '0');
+
+  nextPrayerName.textContent = `${tPrayers[nextKey]} (${nextTimeStr})`;
+  nextPrayerCountdown.textContent = `⏳ ${remH}:${remM}:${remS}`;
+}
+
+setInterval(updateClockAndPrayers, 1000);
+updateClockAndPrayers();
+
+citySelect.addEventListener('change', (e) => {
+  selectedCity = e.target.value;
+  localStorage.setItem('selected_city', selectedCity);
+  fetchLivePrayerTimes(selectedCity);
+  renderPrayerTimes();
+});
+
+function renderPrayerTimes() {
+  const times = prayerTimings[selectedCity];
+  const t = translations[currentLangCode];
+  let html = `<b>${t.cityLabel} ${citySelect.options[citySelect.selectedIndex].text}</b><br><br>`;
+  for (let [key, pTime] of Object.entries(times)) {
+    html += `<div class="prayer-row"><span>${t.prayers[key]}</span> <b>${pTime}</b></div>`;
+  }
+  document.getElementById('prayerTimesList').innerHTML = html;
+}
+
+document.getElementById('testAzhanBtn').addEventListener('click', () => {
+  if (azhanAudio.paused) {
+    azhanAudio.play().catch(() => {});
+  } else {
+    azhanAudio.pause();
+    azhanAudio.currentTime = 0;
+  }
+});
+
+function renderCollection() {
+  const t = translations[currentLangCode];
+  let html = "";
+  zikrCollectionData.forEach((item) => {
+    const title = item[currentLangCode];
+    const meaning = currentLangCode === 'ru' ? item.meaningRu : item.meaningUz;
+    html += `
+      <div class="collection-card">
+        <div class="title-uz">${title}</div>
+        <div class="ar-text">${item.arabic}</div>
+        <div class="meaning">💡 ${meaning}</div>
+        <button class="select-zikr-btn" onclick="selectFromCollection(${item.targetIndex}, '${item.arabic.replace(/'/g, "\\'")}')">${t.selectBtn}</button>
+        <div style="clear:both;"></div>
+      </div>
+    `;
+  });
+  document.getElementById('collectionModalBody').innerHTML = html;
+}
+
+window.selectFromCollection = function(targetIdx, arText) {
+  currentZikrIndex = targetIdx;
+  i18nZikrs[targetIdx].arabic = arText;
+  updateUI();
+  document.getElementById('collectionModal').classList.remove('active');
+  if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+};
+
+collectionBtn.addEventListener('click', () => {
+  renderCollection();
+  document.getElementById('collectionModal').classList.add('active');
+});
+document.getElementById('closeCollectionModal').addEventListener('click', () => {
+  document.getElementById('collectionModal').classList.remove('active');
+});
+
+prayerBtn.addEventListener('click', () => {
+  renderPrayerTimes();
+  document.getElementById('prayerModal').classList.add('active');
+});
+document.getElementById('closePrayerModal').addEventListener('click', () => {
+  document.getElementById('prayerModal').classList.remove('active');
+});
+
+langToggleBtn.addEventListener('click', () => {
+  currentLangCode = currentLangCode === 'uz' ? 'ru' : 'uz';
+  updateUI();
+});
+
+ratingBtn.addEventListener('click', () => {
+  const t = translations[currentLangCode];
+  let userName = currentLangCode === 'uz' ? 'Фойдаланувчи' : 'Пользователь';
+  try {
+    if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+      userName = tg.initDataUnsafe.user.first_name || userName;
+    }
+  } catch (e) {}
+
+  let listHtml = `👤 <b>${userName}</b><br><br>`;
+  i18nZikrs.forEach(zikr => {
+    const count = parseInt(localStorage.getItem(zikr.key)) || 0;
+    listHtml += `<div class="rating-row"><span>${zikr[currentLangCode]}:</span> <b>${count} ${t.unit}</b></div>`;
+  });
+
+  listHtml += `<br><div class="rating-row" style="border-top: 1px solid #f1c40f; padding-top: 6px;">
+    <span><b>${t.grandTotalLabel}</b></span> <b style="color: #f1c40f;">${calculateTotalZikr()} ${t.unit}</b>
+  </div>`;
+  document.getElementById('ratingModalBody').innerHTML = listHtml;
+  document.getElementById('ratingModal').classList.add('active');
+});
+document.getElementById('closeModalBtn').addEventListener('click', () => {
+  document.getElementById('ratingModal').classList.remove('active');
+});
+
+tabs.forEach((tab, idx) => {
+  tab.addEventListener('click', () => {
+    currentZikrIndex = idx;
+    updateUI();
+    if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged();
+  });
+});
+
+tapBtn.addEventListener('click', () => {
+  const zikrObj = i18nZikrs[currentZikrIndex];
+  let count = (parseInt(localStorage.getItem(zikrObj.key)) || 0) + 1;
+  localStorage.setItem(zikrObj.key, count);
+
+  counterDisplay.textContent = count;
+  cycleIndicator.textContent = `${count % 33 === 0 ? 33 : count % 33} / 33`;
+  totalBadge.textContent = `${translations[currentLangCode].totalText}: ${calculateTotalZikr()}`;
+
+  if (count % 33 === 0) {
+    milestoneToast.textContent = `✨ ${count} та тўлди! ✨`;
+    milestoneToast.classList.add('show');
+    setTimeout(() => milestoneToast.classList.remove('show'), 2000);
+    if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+  } else {
+    if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+  }
+});
+
+adsBtn.addEventListener('click', () => {
+  try {
+    if (typeof show_12215662 === 'function') {
+      show_12215662();
+    }
+  } catch (e) {}
+
+  setTimeout(() => {
+    grantAdReward();
+  }, 2500);
+
+  if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+});
+
+function grantAdReward() {
+  let rewardAmount = 10;
+  userBalance += rewardAmount;
+  localStorage.setItem('user_balance', userBalance);
+
+  showToast(`🎉 Табриклаймиз! Реклама учун +${rewardAmount} балл қўшилди! (Баланс: ${userBalance})`);
+
+  if (tg) {
+    try {
+      tg.sendData(JSON.stringify({ action: "add_bonus", points: rewardAmount }));
+    } catch (err) {
+      try {
+        tg.sendData("watched_ad");
+      } catch (e) {}
+    }
+  }
+}
+
+function showToast(text) {
+  let toast = document.getElementById('customToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'customToast';
+    toast.style.cssText = `
+      position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+      background: #f1c40f; color: #0b3c2e; padding: 8px 16px; border-radius: 20px;
+      font-size: 11px; font-weight: bold; z-index: 1000; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+      transition: opacity 0.3s ease; text-align: center; max-width: 90%;
+    `;
+    document.body.appendChild(toast);
+  }
+  toast.textContent = text;
+  toast.style.opacity = '1';
+  setTimeout(() => {
+    toast.style.opacity = '0';
+  }, 3500);
+}
+
+resetBtn.addEventListener('click', () => {
+  const zikrObj = i18nZikrs[currentZikrIndex];
+  if (confirm(translations[currentLangCode].confirmReset)) {
+    localStorage.setItem(zikrObj.key, 0);
+    updateUI();
+    if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('warning');
+  }
+});
+
+updateUI();
+</script>
+</body>
+</html>
