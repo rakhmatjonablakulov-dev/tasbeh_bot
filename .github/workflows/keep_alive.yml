@@ -1,0 +1,16 @@
+name: Keep Render Service Alive
+
+on:
+  schedule:
+    # Запускать каждые 14 минут (Render засыпает через 15 минут простоя)
+    - cron: '*/14 * * * *'
+  # Позволяет запустить проверку вручную через интерфейс GitHub
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render URL
+        run: |
+          curl -f -s -o /dev/null -w "Status: %{http_code}\n" ${{ secrets.RENDER_URL }}
