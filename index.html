@@ -21,8 +21,8 @@
   });
 </script>
 
-<!-- 2. Monetag SDK (O'z holatida saqlandi, ishlayveradi) -->
-<script src='//libtl.com/sdk.js' data-zone='12215662' data-sdk='show_12215662'></script>
+<!-- 2. Monetag SDK (Yangilangan zona: 12266127) -->
+<script src='//libtl.com/sdk.js' data-zone='12266127' data-sdk='show_12266127'></script>
 <!-- ======================================================================= -->
 
 <style>
@@ -910,19 +910,19 @@ adsBtn.addEventListener('click', () => {
       // Reklama muvaffaqiyatli ko'rildi
       grantAdReward();
     }).catch((err) => {
-      // Xatolik yoki reklama ko'rsatilmadi, Monetag zaxira sifatida ishlaydi
+      // Xatolik yoki reklama ko'rsatilmadi, Monetag zaxira sifatida ishlaydi (12266127)
       try {
-        if (typeof show_12215662 === 'function') {
-          show_12215662();
+        if (typeof show_12266127 === 'function') {
+          show_12266127();
         }
       } catch (e) {}
       grantAdReward();
     });
   } else {
-    // Agar Adsgram yuklanmagan bo'lsa, Monetag ishlaydi
+    // Agar Adsgram yuklanmagan bo'lsa, Monetag ishlaydi (12266127)
     try {
-      if (typeof show_12215662 === 'function') {
-        show_12215662();
+      if (typeof show_12266127 === 'function') {
+        show_12266127();
       }
     } catch (e) {}
     grantAdReward();
