@@ -2,7 +2,6 @@
 import os
 import json
 import hmac
-import asyncio
 from pathlib import Path
 
 import asyncpg
@@ -18,8 +17,8 @@ MONETAG_SECRET = os.getenv("MONETAG_SECRET")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 ADMIN_ID = int(os.getenv("ADMIN_ID", "8274122612"))
-REWARD_AMOUNT = 200
 
+REWARD_AMOUNT = 200
 USERS_FILE = Path("users_data.json")
 
 app = FastAPI(title="Tasbeh Bot API")
@@ -29,7 +28,7 @@ db_pool = None
 
 
 # =====================================
-# DATABASE STARTUP
+# DATABASE TABLES
 # =====================================
 
 async def create_tables():
@@ -56,8 +55,7 @@ async def create_tables():
         """)
 
         await conn.execute("""
-            CREATE INDEX IF NOT EXISTS
-            idx_monetag_events_user
+            CREATE INDEX IF NOT EXISTS idx_monetag_events_user
             ON monetag_events(user_id)
         """)
 
@@ -67,6 +65,7 @@ async def create_tables():
 # =====================================
 
 async def migrate_json_data():
+
     if not USERS_FILE.exists():
         return
 
@@ -74,11 +73,12 @@ async def migrate_json_data():
         with open(USERS_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        users = set(data.get("users", []))
         balances = data.get("balances", {})
         names = data.get("names", {})
-        referred = set(data.get("referred", []))
+        referred = {int(x) for x in data.get("referred", [])}
         tasks = data.get("completed_tasks", {})
+
+        users = {int(x) for x in data.get("users", [])}
 
         all_ids = (
             users
@@ -91,12 +91,11 @@ async def migrate_json_data():
             async with conn.transaction():
 
                 for uid in all_ids:
-                    uid = int(uid)
 
                     await conn.execute("""
                         INSERT INTO tasbeh_users
-                        (user_id, balance, username, referred,
-                         completed_tasks)
+                        (user_id, balance, username,
+                         referred, completed_tasks)
                         VALUES ($1, $2, $3, $4, $5::jsonb)
                         ON CONFLICT (user_id) DO NOTHING
                     """,
@@ -107,14 +106,14 @@ async def migrate_json_data():
                         json.dumps(tasks.get(str(uid), {}))
                     )
 
-        print("Old JSON data migration completed")
+        print("JSON migration completed")
 
     except Exception as e:
         print("JSON migration error:", str(e))
 
 
 # =====================================
-# STARTUP AND SHUTDOWN
+# STARTUP
 # =====================================
 
 @app.on_event("startup")
@@ -123,7 +122,7 @@ async def startup():
     global db_pool
 
     if not DATABASE_URL:
-        raise RuntimeError("DATABASE_URL is missing in Render")
+        raise RuntimeError("DATABASE_URL is missing")
 
     db_pool = await asyncpg.create_pool(
         DATABASE_URL,
@@ -136,7 +135,12 @@ async def startup():
     await migrate_json_data()
 
     print("PostgreSQL connected successfully!")
+    print("Monetag reward system ready!")
 
+
+# =====================================
+# SHUTDOWN
+# =====================================
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -151,20 +155,29 @@ async def shutdown():
 
 
 # =====================================
-# MONETAG REWARD PROCESSING
+# MONETAG PROCESSING
 # =====================================
 
 async def process_reward(
-    userid: str,
-    secret: str,
-    reward_event_type: str,
-    event_id: str = ""
+    telegram_id: str = "",
+    userid: str = "",
+    secret: str = "",
+    reward_event_type: str = "",
+    event_type: str = "",
+    ymid: str = "",
+    event_id: str = "",
+    transaction_id: str = "",
+    zone_id: str = "",
+    sub_zone_id: str = "",
+    estimated_price: str = "",
+    request_var: str = ""
 ):
 
+    # Check secret
     if not MONETAG_SECRET:
         raise HTTPException(
             status_code=500,
-            detail="MONETAG_SECRET is not configured"
+            detail="MONETAG_SECRET is missing in Render"
         )
 
     if not secret or not hmac.compare_digest(
@@ -175,69 +188,94 @@ async def process_reward(
             detail="Invalid secret"
         )
 
-    if reward_event_type != "valued":
+    # Accept Monetag Telegram ID
+    user_value = telegram_id or userid
+
+    if not user_value or not user_value.isdigit():
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid telegram_id"
+        )
+
+    # Only paid/rewarded events
+    reward_type = reward_event_type or event_type
+
+    if reward_type != "valued":
         return {
             "status": "ignored",
             "reason": "Event is not valued"
         }
 
-    if not userid or not userid.isdigit():
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid userid"
-        )
+    user_id = int(user_value)
 
-    user_id = int(userid)
+    # Monetag unique event ID
+    unique_id = ymid or event_id or transaction_id
 
     try:
+
         async with db_pool.acquire() as conn:
+
             async with conn.transaction():
 
-                # If Monetag sends a unique event ID,
-                # prevent processing it twice.
-                if event_id:
+                # Prevent duplicate rewards
+                if unique_id:
+
                     inserted = await conn.fetchval("""
                         INSERT INTO monetag_events
                         (event_id, user_id, reward)
                         VALUES ($1, $2, $3)
                         ON CONFLICT (event_id) DO NOTHING
                         RETURNING event_id
-                    """, event_id, user_id, REWARD_AMOUNT)
+                    """,
+                        unique_id,
+                        user_id,
+                        REWARD_AMOUNT
+                    )
 
                     if not inserted:
                         return {
                             "status": "duplicate",
-                            "message": "Event already processed"
+                            "message": "This event was already processed"
                         }
 
+                # Add 200 coins
                 row = await conn.fetchrow("""
                     INSERT INTO tasbeh_users
                     (user_id, balance)
                     VALUES ($1, $2)
+
                     ON CONFLICT (user_id)
                     DO UPDATE SET
                         balance = tasbeh_users.balance + $2
+
                     RETURNING balance
-                """, user_id, REWARD_AMOUNT)
+                """,
+                    user_id,
+                    REWARD_AMOUNT
+                )
 
                 new_balance = row["balance"]
 
         print(
-            f"MONETAG: user={user_id}, "
+            f"MONETAG SUCCESS: "
+            f"user={user_id}, "
             f"reward={REWARD_AMOUNT}, "
-            f"balance={new_balance}"
+            f"balance={new_balance}, "
+            f"ymid={unique_id}"
         )
 
         # Telegram notification
         if bot:
+
             try:
                 await bot.send_message(
                     user_id,
                     "⭐ <b>Рекламани кўрганингиз учун ташаккур!</b>\n"
-                    f"💎 Ҳисобингизга <b>+{REWARD_AMOUNT} балл</b> "
-                    "қўшилди.",
+                    f"💎 Ҳисобингизга <b>+{REWARD_AMOUNT} балл</b> қўшилди.\n"
+                    f"💰 Жами баланс: <b>{new_balance}</b>",
                     parse_mode="HTML"
                 )
+
             except Exception as e:
                 print("Telegram notification error:", str(e))
 
@@ -253,7 +291,9 @@ async def process_reward(
         raise
 
     except Exception as e:
-        print("Reward processing error:", str(e))
+
+        print("MONETAG ERROR:", str(e))
+
         raise HTTPException(
             status_code=500,
             detail="Reward processing failed"
@@ -266,44 +306,66 @@ async def process_reward(
 
 @app.get("/postback")
 async def monetag_postback(
+    telegram_id: str = Query(default=""),
     userid: str = Query(default=""),
     secret: str = Query(default=""),
     reward_event_type: str = Query(default=""),
+    event_type: str = Query(default=""),
+    ymid: str = Query(default=""),
     event_id: str = Query(default=""),
-    transaction_id: str = Query(default="")
+    transaction_id: str = Query(default=""),
+    zone_id: str = Query(default=""),
+    sub_zone_id: str = Query(default=""),
+    estimated_price: str = Query(default=""),
+    request_var: str = Query(default="")
 ):
 
-    unique_id = event_id or transaction_id
-
     return await process_reward(
+        telegram_id=telegram_id,
         userid=userid,
         secret=secret,
         reward_event_type=reward_event_type,
-        event_id=unique_id
-    )
-
-
-@app.get("/ymid")
-async def monetag_ymid(
-    userid: str = Query(default=""),
-    secret: str = Query(default=""),
-    reward_event_type: str = Query(default=""),
-    event_id: str = Query(default=""),
-    transaction_id: str = Query(default="")
-):
-
-    unique_id = event_id or transaction_id
-
-    return await process_reward(
-        userid=userid,
-        secret=secret,
-        reward_event_type=reward_event_type,
-        event_id=unique_id
+        event_type=event_type,
+        ymid=ymid,
+        event_id=event_id,
+        transaction_id=transaction_id,
+        zone_id=zone_id,
+        sub_zone_id=sub_zone_id,
+        estimated_price=estimated_price,
+        request_var=request_var
     )
 
 
 # =====================================
-# CHECK USER BALANCE
+# ALTERNATIVE YMID ENDPOINT
+# =====================================
+
+@app.get("/ymid")
+async def monetag_ymid(
+    telegram_id: str = Query(default=""),
+    userid: str = Query(default=""),
+    secret: str = Query(default=""),
+    reward_event_type: str = Query(default=""),
+    event_type: str = Query(default=""),
+    ymid: str = Query(default=""),
+    event_id: str = Query(default=""),
+    transaction_id: str = Query(default="")
+):
+
+    return await process_reward(
+        telegram_id=telegram_id,
+        userid=userid,
+        secret=secret,
+        reward_event_type=reward_event_type,
+        event_type=event_type,
+        ymid=ymid,
+        event_id=event_id,
+        transaction_id=transaction_id
+    )
+
+
+# =====================================
+# CHECK BALANCE
 # =====================================
 
 @app.get("/reward")
@@ -331,11 +393,14 @@ async def manual_reward(userid: str = ""):
 
 
 # =====================================
-# ADD USER
+# REGISTER USER
 # =====================================
 
 @app.get("/register")
-async def register_user(userid: str = "", username: str = ""):
+async def register_user(
+    userid: str = "",
+    username: str = ""
+):
 
     if not userid.isdigit():
         raise HTTPException(
@@ -346,16 +411,20 @@ async def register_user(userid: str = "", username: str = ""):
     async with db_pool.acquire() as conn:
 
         await conn.execute("""
-            INSERT INTO tasbeh_users (user_id, username)
+            INSERT INTO tasbeh_users
+            (user_id, username)
             VALUES ($1, $2)
             ON CONFLICT (user_id) DO NOTHING
-        """, int(userid), username)
+        """,
+            int(userid),
+            username
+        )
 
     return {"status": "success"}
 
 
 # =====================================
-# DATABASE TEST
+# DATABASE CHECK
 # =====================================
 
 @app.get("/db-check")
@@ -381,6 +450,7 @@ async def root():
         "status": "online",
         "message": "Tasbeh Bot API is running",
         "database": "PostgreSQL",
+        "monetag": "ready",
         "reward": REWARD_AMOUNT
     }
 
