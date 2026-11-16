@@ -45,7 +45,8 @@ def save_users_data(users, user_balances, user_names, referred_users, user_compl
         "completed_tasks": user_completed_tasks
     }
     with open(USERS_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ensure=False, indent=4)
+        json.dump(data, f, ensure_ascii=False, indent=4)
+        
 
 # --- MONETAG POSTBACK ENDPOINT (Путь изменен на /ymid) ---
 @app.get("/ymid")
