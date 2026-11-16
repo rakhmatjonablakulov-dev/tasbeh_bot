@@ -204,7 +204,8 @@ async def open_tasbih(message: types.Message):
         parse_mode="HTML"
     )
 
-@dp.message(F.text == "💰 Балансим")
+# Тўғриланди: Баланс сўзи тугмага мослаштирилди
+@dp.message(F.text == "💰 Баланс")
 async def check_balance(message: types.Message):
     user_id = message.from_user.id
     balance = user_balances.get(user_id, 0)
