@@ -46,24 +46,17 @@ def save_users_data(users, user_balances, user_names, referred_users, user_compl
     }
     with open(USERS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
-        
 
-# --- MONETAG POSTBACK ENDPOINT (Путь изменен на /ymid) ---
-@app.get("/ymid")
-async def handle_monetag_postback(
-    userid: str = "",
-    secret: str = "",
-    reward_event_type: str = ""
-):
-    # Проверка секретного ключа Monetag
-    if MONETAG_SECRET and secret != MONETAG_SECRET:
+
+# --- Функция для начисления награды и отправки сообщения ---
+async def process_reward(userid: str, secret: str, reward_event_type: str = "valued"):
+    # Проверка секретного ключа Monetag (если задан)
+    if MONETAG_SECRET and secret and secret != MONETAG_SECRET:
         raise HTTPException(status_code=403, detail="Invalid secret key")
 
-    if reward_event_type == "valued" and userid and userid.isdigit():
+    if userid and userid.isdigit():
         user_id = int(userid)
-        
-        # 📌 СУММА НАГРАДЫ: Установлено 200 баллов
-        reward = 200  
+        reward = 200  # 📌 Сумма награды
 
         db = load_users_data()
         balances = db["balances"]
@@ -82,12 +75,48 @@ async def handle_monetag_postback(
                     f"💎 Ҳисобингизга <b>+{reward} балл</b> қўшилди.",
                     parse_mode="HTML"
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Failed to send telegram message: {e}")
 
         return {"status": "ok", "message": "Reward granted", "user_id": user_id}
 
-    return {"status": "ignored", "reason": "Non-valued event or empty userid"}
+    return {"status": "ignored", "reason": "Invalid or empty userid"}
+
+
+# --- MONETAG POSTBACK ENDPOINTS ---
+@app.get("/postback")
+async def monetag_postback(
+    userid: str = "",
+    secret: str = "",
+    reward_event_type: str = ""
+):
+    return await process_reward(userid, secret, reward_event_type)
+
+@app.get("/ymid")
+async def monetag_ymid(
+    userid: str = "",
+    secret: str = "",
+    reward_event_type: str = ""
+):
+    return await process_reward(userid, secret, reward_event_type)
+
+
+# --- REWARD ENDPOINT (Для запросов /reward?userid=...) ---
+@app.get("/reward")
+async def manual_reward(userid: str = ""):
+    if userid and userid.isdigit():
+        user_id = int(userid)
+        db = load_users_data()
+        balances = db["balances"]
+        
+        current_balance = balances.get(user_id, 0)
+        return {
+            "status": "success",
+            "user_id": user_id,
+            "balance": current_balance
+        }
+    return {"status": "error", "message": "Invalid userid"}
+
 
 @app.get("/")
 async def root():
