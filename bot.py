@@ -2,8 +2,6 @@ import os
 import asyncio
 import json
 import time
-from fastapi import FastAPI, Request, HTTPException
-import uvicorn
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import Message
 from aiogram.filters import Command
@@ -14,8 +12,6 @@ from aiogram.fsm.context import FSMContext
 # Настройки бота ва ўзгарувчилар
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "8274122612"))
-PORT = int(os.getenv("PORT", 10000))
-MONETAG_SECRET = os.getenv("MONETAG_SECRET")
 
 # WEBAPP_URL ни GitHub Pages манзилига мослаб қўямиз
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://rakhmatjonablakulov-dev.github.io/tasbeh_bot/")
@@ -25,7 +21,6 @@ if not TOKEN:
 
 bot = Bot(token=TOKEN) if TOKEN else None
 dp = Dispatcher()
-app = FastAPI()
 
 TASKS_FILE = "tasks.json"
 USERS_FILE = "users_data.json"
@@ -127,7 +122,7 @@ class AdminTask(StatesGroup):
 def get_main_menu():
     builder = ReplyKeyboardBuilder()
     builder.button(text="📿 Т А С Б Е Х Н И  О Ч И Ш")
-    builder.button(text="💰 Балансим")
+    builder.button(text="💰 Баланс")
     builder.button(text="💳 Пулни ечиб олиш")
     builder.button(text="🏆 Рейтинг")
     builder.button(text="👥 Дўстларни таклиф")
@@ -473,7 +468,6 @@ async def process_ads_view(message: types.Message):
         parse_mode="HTML"
     )
 
-# --- МИНИ-ИЛОВАДАН (WEB APP) МАЪЛУМОТ ҚАБУЛ ҚИЛИШ ВА БАЛЛ БЕРИШ ---
 @dp.message(F.web_app_data)
 async def web_app_data_handler(message: Message):
     user_id = message.from_user.id
@@ -493,45 +487,6 @@ async def web_app_data_handler(message: Message):
             f"💎 Жорий балансингиз: <b>{user_balances[user_id]} балл</b>",
             parse_mode="HTML"
         )
-
-# --- MONETAG POSTBACK ENDPOINT ---
-@app.get("/postback")
-async def handle_monetag_postback(
-    userid: str = "",
-    secret: str = "",
-    reward_event_type: str = ""
-):
-    if not MONETAG_SECRET or secret != MONETAG_SECRET:
-        raise HTTPException(status_code=403, detail="Invalid secret key")
-
-    if reward_event_type == "valued" and userid and userid.isdigit():
-        user_id = int(userid)
-        reward = 10
-
-        if user_id not in user_balances:
-            user_balances[user_id] = 0
-
-        user_balances[user_id] += reward
-        save_users_data()
-
-        try:
-            if bot:
-                await bot.send_message(
-                    user_id,
-                    f"⭐ <b>Рекламани кўрганингиз учун ташаккур!</b>\n"
-                    f"💎 Ҳисобингизга <b>+{reward} балл</b> қўшилди.",
-                    parse_mode="HTML"
-                )
-        except Exception:
-            pass
-
-        return {"status": "ok", "message": "Reward granted", "user_id": user_id}
-
-    return {"status": "ignored", "reason": "Non-valued event or empty userid"}
-
-@app.get("/")
-async def root():
-    return {"status": "online", "message": "Tasbeh Bot & API is running successfully!"}
 
 @dp.message(Command("admin"))
 async def admin_panel(message: types.Message):
@@ -806,14 +761,8 @@ async def main():
         print("❌ Хатолик: BOT_TOKEN созланмаганлиги сабабли бот ишга тушмади!")
         return
 
-    print("Тасбеҳ боти ва веб-сервер ишга тушмоқда...")
-    config = uvicorn.Config(app, host="0.0.0.0", port=PORT, log_level="info")
-    server = uvicorn.Server(config)
-    
-    await asyncio.gather(
-        server.serve(),
-        dp.start_polling(bot)
-    )
+    print("Тасбеҳ боти polling орқали ишга тушмоқда...")
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    asyncio.main() if hasattr(asyncio, "main") else asyncio.run(main())
+    asyncio.run(main())
