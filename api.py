@@ -1,12 +1,17 @@
-
 import os
 import json
 import hmac
+import asyncio
 from pathlib import Path
+from contextlib import asynccontextmanager
 
 import asyncpg
 from fastapi import FastAPI, HTTPException, Query
 from aiogram import Bot
+
+# Импортируем диспетчер и бота из вашего файла bot.py
+# Убедитесь, что в bot.py нет запуска polling вне if __name__ == "__main__":
+from bot import dp, bot as tg_bot
 
 # =====================================
 # SETTINGS
@@ -21,10 +26,10 @@ ADMIN_ID = int(os.getenv("ADMIN_ID", "8274122612"))
 REWARD_AMOUNT = 200
 USERS_FILE = Path("users_data.json")
 
-app = FastAPI(title="Tasbeh Bot API")
-
-bot = Bot(token=TOKEN) if TOKEN else None
+# Используем бота из bot.py или создаем экземпляр, если он не импортирован
+bot = tg_bot if tg_bot else (Bot(token=TOKEN) if TOKEN else None)
 db_pool = None
+bot_task = None
 
 
 # =====================================
@@ -33,7 +38,6 @@ db_pool = None
 
 async def create_tables():
     async with db_pool.acquire() as conn:
-
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS tasbeh_users (
                 user_id BIGINT PRIMARY KEY,
@@ -65,7 +69,6 @@ async def create_tables():
 # =====================================
 
 async def migrate_json_data():
-
     if not USERS_FILE.exists():
         return
 
@@ -77,7 +80,6 @@ async def migrate_json_data():
         names = data.get("names", {})
         referred = {int(x) for x in data.get("referred", [])}
         tasks = data.get("completed_tasks", {})
-
         users = {int(x) for x in data.get("users", [])}
 
         all_ids = (
@@ -89,13 +91,10 @@ async def migrate_json_data():
 
         async with db_pool.acquire() as conn:
             async with conn.transaction():
-
                 for uid in all_ids:
-
                     await conn.execute("""
                         INSERT INTO tasbeh_users
-                        (user_id, balance, username,
-                         referred, completed_tasks)
+                        (user_id, balance, username, referred, completed_tasks)
                         VALUES ($1, $2, $3, $4, $5::jsonb)
                         ON CONFLICT (user_id) DO NOTHING
                     """,
@@ -113,14 +112,14 @@ async def migrate_json_data():
 
 
 # =====================================
-# STARTUP
+# LIFESPAN (STARTUP & SHUTDOWN)
 # =====================================
 
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global db_pool, bot_task
 
-    global db_pool
-
+    # --- STARTUP ---
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL is missing")
 
@@ -137,21 +136,30 @@ async def startup():
     print("PostgreSQL connected successfully!")
     print("Monetag reward system ready!")
 
+    # Запуск Telegram-бота в фоновом режиме
+    if bot and dp:
+        await bot.delete_webhook(drop_pending_updates=True)
+        bot_task = asyncio.create_task(dp.start_polling(bot))
+        print("Telegram Bot polling started!")
 
-# =====================================
-# SHUTDOWN
-# =====================================
+    yield
 
-@app.on_event("shutdown")
-async def shutdown():
-
-    global db_pool
+    # --- SHUTDOWN ---
+    if bot_task:
+        bot_task.cancel()
+        try:
+            await bot_task
+        except asyncio.CancelledError:
+            pass
 
     if db_pool:
         await db_pool.close()
 
     if bot:
         await bot.session.close()
+
+
+app = FastAPI(title="Tasbeh Bot API", lifespan=lifespan)
 
 
 # =====================================
@@ -172,23 +180,18 @@ async def process_reward(
     estimated_price: str = "",
     request_var: str = ""
 ):
-
-    # Check secret
     if not MONETAG_SECRET:
         raise HTTPException(
             status_code=500,
             detail="MONETAG_SECRET is missing in Render"
         )
 
-    if not secret or not hmac.compare_digest(
-        secret, MONETAG_SECRET
-    ):
+    if not secret or not hmac.compare_digest(secret, MONETAG_SECRET):
         raise HTTPException(
             status_code=403,
             detail="Invalid secret"
         )
 
-    # Accept Monetag Telegram ID
     user_value = telegram_id or userid
 
     if not user_value or not user_value.isdigit():
@@ -197,7 +200,6 @@ async def process_reward(
             detail="Invalid telegram_id"
         )
 
-    # Only paid/rewarded events
     reward_type = reward_event_type or event_type
 
     if reward_type != "valued":
@@ -207,19 +209,12 @@ async def process_reward(
         }
 
     user_id = int(user_value)
-
-    # Monetag unique event ID
     unique_id = ymid or event_id or transaction_id
 
     try:
-
         async with db_pool.acquire() as conn:
-
             async with conn.transaction():
-
-                # Prevent duplicate rewards
                 if unique_id:
-
                     inserted = await conn.fetchval("""
                         INSERT INTO monetag_events
                         (event_id, user_id, reward)
@@ -238,16 +233,13 @@ async def process_reward(
                             "message": "This event was already processed"
                         }
 
-                # Add 200 coins
                 row = await conn.fetchrow("""
                     INSERT INTO tasbeh_users
                     (user_id, balance)
                     VALUES ($1, $2)
-
                     ON CONFLICT (user_id)
                     DO UPDATE SET
                         balance = tasbeh_users.balance + $2
-
                     RETURNING balance
                 """,
                     user_id,
@@ -264,9 +256,7 @@ async def process_reward(
             f"ymid={unique_id}"
         )
 
-        # Telegram notification
         if bot:
-
             try:
                 await bot.send_message(
                     user_id,
@@ -275,7 +265,6 @@ async def process_reward(
                     f"💰 Жами баланс: <b>{new_balance}</b>",
                     parse_mode="HTML"
                 )
-
             except Exception as e:
                 print("Telegram notification error:", str(e))
 
@@ -291,9 +280,7 @@ async def process_reward(
         raise
 
     except Exception as e:
-
         print("MONETAG ERROR:", str(e))
-
         raise HTTPException(
             status_code=500,
             detail="Reward processing failed"
@@ -319,7 +306,6 @@ async def monetag_postback(
     estimated_price: str = Query(default=""),
     request_var: str = Query(default="")
 ):
-
     return await process_reward(
         telegram_id=telegram_id,
         userid=userid,
@@ -351,7 +337,6 @@ async def monetag_ymid(
     event_id: str = Query(default=""),
     transaction_id: str = Query(default="")
 ):
-
     return await process_reward(
         telegram_id=telegram_id,
         userid=userid,
@@ -370,7 +355,6 @@ async def monetag_ymid(
 
 @app.get("/reward")
 async def manual_reward(userid: str = ""):
-
     if not userid.isdigit():
         raise HTTPException(
             status_code=400,
@@ -378,7 +362,6 @@ async def manual_reward(userid: str = ""):
         )
 
     async with db_pool.acquire() as conn:
-
         balance = await conn.fetchval("""
             SELECT balance
             FROM tasbeh_users
@@ -401,7 +384,6 @@ async def register_user(
     userid: str = "",
     username: str = ""
 ):
-
     if not userid.isdigit():
         raise HTTPException(
             status_code=400,
@@ -409,7 +391,6 @@ async def register_user(
         )
 
     async with db_pool.acquire() as conn:
-
         await conn.execute("""
             INSERT INTO tasbeh_users
             (user_id, username)
@@ -429,7 +410,6 @@ async def register_user(
 
 @app.get("/db-check")
 async def db_check():
-
     async with db_pool.acquire() as conn:
         result = await conn.fetchval("SELECT 1")
 
@@ -440,12 +420,11 @@ async def db_check():
 
 
 # =====================================
-# ROOT
+# ROOT & HEALTH
 # =====================================
 
 @app.get("/")
 async def root():
-
     return {
         "status": "online",
         "message": "Tasbeh Bot API is running",
@@ -457,5 +436,4 @@ async def root():
 
 @app.get("/health")
 async def health():
-
     return {"status": "ok"}
