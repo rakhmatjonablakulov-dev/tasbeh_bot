@@ -8,10 +8,12 @@ from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
+import asyncpg
 
 # Настройки бота ва ўзгарувчилар
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "8274122612"))
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 # WEBAPP_URL ни GitHub Pages манзилига мослаб қўямиз
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://rakhmatjonablakulov-dev.github.io/tasbeh_bot/")
@@ -23,9 +25,65 @@ bot = Bot(token=TOKEN) if TOKEN else None
 dp = Dispatcher()
 
 TASKS_FILE = "tasks.json"
-USERS_FILE = "users_data.json"
 
-# --- МАЪЛУМОТЛАРНИ САҚЛАШ ВА ЎҚИШ ---
+# --- ПОСТГРЕСС БАЗА БИЛАН ИШЛАШ ФУНКЦИЯЛАРИ ---
+async def get_db_pool():
+    if not DATABASE_URL:
+        return None
+    return await asyncpg.create_pool(DATABASE_URL, ssl="require")
+
+async def db_get_user(user_id: int):
+    pool = await get_db_pool()
+    if not pool:
+        return {"balance": 0, "username": "Foydalanuvchi", "completed_tasks": {}}
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT balance, username, completed_tasks FROM tasbeh_users WHERE user_id = $1", user_id)
+        if row:
+            tasks = row["completed_tasks"]
+            if isinstance(tasks, str):
+                tasks = json.loads(tasks)
+            return {
+                "balance": row["balance"],
+                "username": row["username"] or "Foydalanuvchi",
+                "completed_tasks": tasks or {}
+            }
+        else:
+            # Янги фойдаланувчини базага қўшиш
+            await conn.execute("""
+                INSERT INTO tasbeh_users (user_id, balance, username, completed_tasks)
+                VALUES ($1, $2, $3, $4::jsonb)
+                ON CONFLICT (user_id) DO NOTHING
+            """, user_id, 1000 if user_id == ADMIN_ID else 0, "Admin" if user_id == ADMIN_ID else "Foydalanuvchi", json.dumps({}))
+            return {"balance": 1000 if user_id == ADMIN_ID else 0, "username": "Admin" if user_id == ADMIN_ID else "Foydalanuvchi", "completed_tasks": {}}
+
+async def db_update_balance_and_tasks(user_id: int, balance_change: int = 0, completed_tasks: dict = None, username: str = None):
+    pool = await get_db_pool()
+    if not pool:
+        return
+    async with pool.acquire() as conn:
+        # Аввал фойдаланувчи борлигини текширамиз ва йўқ бўлса яратамиз
+        await conn.execute("""
+            INSERT INTO tasbeh_users (user_id, balance, username, completed_tasks)
+            VALUES ($1, 0, '', '{}'::jsonb)
+            ON CONFLICT (user_id) DO NOTHING
+        """, user_id)
+        
+        if balance_change != 0:
+            await conn.execute("UPDATE tasbeh_users SET balance = balance + $2 WHERE user_id = $1", user_id, balance_change)
+        if completed_tasks is not None:
+            await conn.execute("UPDATE tasbeh_users SET completed_tasks = $2::jsonb WHERE user_id = $1", user_id, json.dumps(completed_tasks))
+        if username:
+            await conn.execute("UPDATE tasbeh_users SET username = $2 WHERE user_id = $1", user_id, username)
+
+async def db_get_all_users():
+    pool = await get_db_pool()
+    if not pool:
+        return []
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("SELECT user_id, balance, username FROM tasbeh_users")
+        return [dict(r) for r in rows]
+
+# --- ВАЗИФАЛАРНИ САҚЛАШ ВА ЎҚИШ (Файл орқали) ---
 def load_tasks():
     if os.path.exists(TASKS_FILE):
         try:
@@ -61,47 +119,7 @@ def delete_task_by_id(task_id):
     save_tasks(tasks)
     return tasks
 
-def load_users_data():
-    if os.path.exists(USERS_FILE):
-        try:
-            with open(USERS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                return {
-                    "users": set(data.get("users", [ADMIN_ID])),
-                    "balances": {int(k): v for k, v in data.get("balances", {}).items()},
-                    "names": {int(k): v for k, v in data.get("names", {}).items()},
-                    "referred": set(data.get("referred", [])),
-                    "completed_tasks": {int(k): v for k, v in data.get("completed_tasks", {}).items()}
-                }
-        except Exception:
-            pass
-    return {
-        "users": {ADMIN_ID},
-        "balances": {ADMIN_ID: 1000},
-        "names": {ADMIN_ID: "Admin"},
-        "referred": set(),
-        "completed_tasks": {}
-    }
-
-def save_users_data():
-    data = {
-        "users": list(users),
-        "balances": user_balances,
-        "names": user_names,
-        "referred": list(referred_users),
-        "completed_tasks": user_completed_tasks
-    }
-    with open(USERS_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
-
-# Маълумотларни глобал ўзгарувчиларга юклаш
 tasks_list = load_tasks()
-db_data = load_users_data()
-users = db_data["users"]
-user_balances = db_data["balances"]
-user_names = db_data["names"]
-referred_users = db_data["referred"]
-user_completed_tasks = db_data["completed_tasks"]
 
 class WithdrawStates(StatesGroup):
     waiting_for_details = State()
@@ -146,38 +164,29 @@ def get_admin_menu():
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     user_id = message.from_user.id
-    users.add(user_id)
-    user_names[user_id] = message.from_user.first_name or "Foydalanuvchi"
-
-    if user_id not in user_balances:
-        user_balances[user_id] = 0
+    user_name = message.from_user.first_name or "Foydalanuvchi"
+    
+    await db_update_balance_and_tasks(user_id, balance_change=0, username=user_name)
 
     args = message.text.split()
     if len(args) > 1 and args[1].isdigit():
         referrer_id = int(args[1])
 
-        if referrer_id != user_id and user_id not in referred_users:
-            referred_users.add(user_id)
-            if referrer_id not in user_balances:
-                user_balances[referrer_id] = 0
-
-            user_balances[referrer_id] += 2000
+        if referrer_id != user_id:
+            # Реферерга +2000 балл қўшиш
+            await db_update_balance_and_tasks(referrer_id, balance_change=2000)
 
             try:
-                ref_name = message.from_user.first_name or "Янги дўстингиз"
                 if bot:
                     await bot.send_message(
                         referrer_id,
                         f"🎉 <b>Табриклаймиз!</b>\n\n"
-                        f"👥 Сизнинг реферал ҳаволангиз орқали <b>{ref_name}</b> ботга аъзо бўлди!\n"
+                        f"👥 Сизнинг реферал ҳаволангиз орқали <b>{user_name}</b> ботга аъзо бўлди!\n"
                         f"💎 Ҳисобингизга <b>+2000 балл</b> қўшилди.",
                         parse_mode="HTML"
                     )
             except Exception:
                 pass
-
-    save_users_data()
-    user_name = message.from_user.first_name or "Қадрли инсон"
 
     welcome_text = (
         f"✨ <b>Ассалому алайкум ва роҳматуллоҳи ва барокатуҳ, {user_name}!</b>\n\n"
@@ -204,11 +213,10 @@ async def open_tasbih(message: types.Message):
         parse_mode="HTML"
     )
 
-# Тўғриланди: Баланс сўзи тугмага мослаштирилди
 @dp.message(F.text == "💰 Баланс")
 async def check_balance(message: types.Message):
-    user_id = message.from_user.id
-    balance = user_balances.get(user_id, 0)
+    user_data = await db_get_user(message.from_user.id)
+    balance = user_data["balance"]
     await message.answer(
         f"💰 <b>Сизнинг ҳисобингиз:</b>\n\n"
         f"💎 Жорий баланс: <b>{balance} балл</b>\n"
@@ -219,8 +227,8 @@ async def check_balance(message: types.Message):
 
 @dp.message(F.text == "💳 Пулни ечиб олиш")
 async def process_withdrawal(message: types.Message, state: FSMContext):
-    user_id = message.from_user.id
-    balance = user_balances.get(user_id, 0)
+    user_data = await db_get_user(message.from_user.id)
+    balance = user_data["balance"]
     MIN_WITHDRAW = 500000
 
     if balance < MIN_WITHDRAW:
@@ -255,7 +263,8 @@ async def cancel_handler(message: types.Message, state: FSMContext):
 async def receive_withdrawal_details(message: types.Message, state: FSMContext):
     user = message.from_user
     details = message.text
-    balance = user_balances.get(user.id, 0)
+    user_data = await db_get_user(user.id)
+    balance = user_data["balance"]
 
     if balance < 500000:
         await message.answer("❌ Балансингиз етарли эмас!", reply_markup=get_main_menu())
@@ -263,8 +272,7 @@ async def receive_withdrawal_details(message: types.Message, state: FSMContext):
         return
 
     withdrawn_amount = balance
-    user_balances[user.id] = 0
-    save_users_data()
+    await db_update_balance_and_tasks(user.id, balance_change=-withdrawn_amount)
 
     admin_text = (
         f"🔔 <b>Янги пул чиқариш сўрови!</b>\n\n"
@@ -290,8 +298,7 @@ async def receive_withdrawal_details(message: types.Message, state: FSMContext):
             parse_mode="HTML"
         )
     except Exception:
-        user_balances[user.id] += withdrawn_amount
-        save_users_data()
+        await db_update_balance_and_tasks(user.id, balance_change=withdrawn_amount)
         await message.answer("❌ Хатолик юз берди. Кейинроқ қайта уриниб кўринг.", reply_markup=get_main_menu())
 
     await state.clear()
@@ -310,8 +317,7 @@ async def admin_payment_decision(callback: types.CallbackQuery):
             await bot.send_message(user_id, "🎉 <b>Табриклаймиз!</b> Пул чиқариш сўровингиз тасдиқланди ва маблағ картангизга ўтказилди!", parse_mode="HTML")
         await callback.message.edit_text(callback.message.text + "\n\n<b>✅ Статус: ТЎЛАНДИ ВА ЯКУНЛАНДИ</b>", parse_mode="HTML")
     else:
-        user_balances[user_id] = user_balances.get(user_id, 0) + amount
-        save_users_data()
+        await db_update_balance_and_tasks(user_id, balance_change=amount)
         if bot:
             await bot.send_message(user_id, f"❌ Афсус, сўровингиз рад этилди. <b>{amount} балл</b> балансингизга қайтарилди.", parse_mode="HTML")
         await callback.message.edit_text(callback.message.text + "\n\n<b>❌ Статус: РАД ЭТИЛДИ (Балл қайтарилди)</b>", parse_mode="HTML")
@@ -320,7 +326,8 @@ async def admin_payment_decision(callback: types.CallbackQuery):
 
 @dp.message(F.text == "🏆 Рейтинг")
 async def show_leaderboard(message: types.Message):
-    sorted_users = sorted(user_balances.items(), key=lambda x: x[1], reverse=True)[:10]
+    all_users = await db_get_all_users()
+    sorted_users = sorted(all_users, key=lambda x: x['balance'], reverse=True)[:10]
 
     text = (
         "🏆 <b>Энг фаол фойдаланувчилар рейтинги (Топ-10)</b>\n\n"
@@ -330,8 +337,9 @@ async def show_leaderboard(message: types.Message):
 
     medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
 
-    for index, (uid, balance) in enumerate(sorted_users):
-        name = user_names.get(uid, f"Фойдаланувчи {uid}")
+    for index, u in enumerate(sorted_users):
+        name = u['username'] or f"Фойдаланувчи {u['user_id']}"
+        balance = u['balance']
         medal = medals[index] if index < len(medals) else f"{index+1}."
         text += f"{medal} <b>{name}</b> — 💎 <b>{balance} балл</b>\n\n"
 
@@ -363,9 +371,11 @@ async def process_tasks(message: types.Message):
         return
     
     user_id = message.from_user.id
-    completed_tasks_list = user_completed_tasks.get(user_id, [])
+    user_data = await db_get_user(user_id)
+    completed_tasks_dict = user_data["completed_tasks"]
     
-    active_tasks = [task for task in tasks_list if task['id'] not in completed_tasks_list]
+    #completed_tasks_dict format: {str(task_id): True}
+    active_tasks = [task for task in tasks_list if str(task['id']) not in completed_tasks_dict and task['id'] not in completed_tasks_dict]
     
     if not active_tasks:
         await message.answer(
@@ -417,10 +427,10 @@ async def task_callback_handler(callback: types.CallbackQuery):
             pass
         return
 
-    if user_id not in user_completed_tasks:
-        user_completed_tasks[user_id] = []
+    user_data = await db_get_user(user_id)
+    completed_tasks = user_data["completed_tasks"]
 
-    if task_id in user_completed_tasks[user_id]:
+    if str(task_id) in completed_tasks or task_id in completed_tasks:
         await callback.answer("Сиз бу вазифа учун аллақачон балл олгансиз!", show_alert=True)
         return
 
@@ -438,9 +448,8 @@ async def task_callback_handler(callback: types.CallbackQuery):
         except Exception:
             pass
 
-    user_completed_tasks[user_id].append(task_id)
-    user_balances[user_id] = user_balances.get(user_id, 0) + target_task['reward']
-    save_users_data()
+    completed_tasks[str(task_id)] = True
+    await db_update_balance_and_tasks(user_id, balance_change=target_task['reward'], completed_tasks=completed_tasks)
 
     await callback.answer("Вазифа муваффақиятли бажарилди!", show_alert=False)
 
@@ -474,18 +483,17 @@ async def web_app_data_handler(message: Message):
     user_id = message.from_user.id
     data = message.web_app_data.data
     
-    if user_id not in user_balances:
-        user_balances[user_id] = 0
+    user_data = await db_get_user(user_id)
         
     if "add_bonus" in data or "watched_ad" in data or data:
         reward = 10
-        user_balances[user_id] += reward
-        save_users_data()
+        await db_update_balance_and_tasks(user_id, balance_change=reward)
+        new_balance = user_data["balance"] + reward
         
         await message.answer(
             f"🎉 <b>Табриклаймиз!</b>\n"
             f"⭐ Рекламани кўрганингиз учун ҳисобингизга <b>+{reward} балл</b> қўшилди!\n"
-            f"💎 Жорий балансингиз: <b>{user_balances[user_id]} балл</b>",
+            f"💎 Жорий балансингиз: <b>{new_balance} балл</b>",
             parse_mode="HTML"
         )
 
@@ -506,9 +514,10 @@ async def admin_panel(message: types.Message):
 async def admin_stats(message: types.Message):
     if message.from_user.id != ADMIN_ID:
         return
+    all_users = await db_get_all_users()
     await message.answer(
         f"📊 <b>Тизим статистикаси:</b>\n\n"
-        f"• Жами фойдаланувчилар: <b>{len(users)} та</b>",
+        f"• Жами фойдаланувчилар: <b>{len(all_users)} та</b>",
         parse_mode="HTML",
         reply_markup=get_admin_menu()
     )
@@ -518,19 +527,21 @@ async def admin_users_list(message: types.Message):
     if message.from_user.id != ADMIN_ID:
         return
 
-    if not users:
+    all_users = await db_get_all_users()
+    if not all_users:
         await message.answer("📭 Ҳозирча ботга кирган фойдаланувчилар йўқ.", reply_markup=get_admin_menu())
         return
 
-    text = f"👥 <b>Ботдаги фойдаланувчилар рўйхати (Жами: {len(users)} та):</b>\n\n"
+    text = f"👥 <b>Ботдаги фойдаланувчилар рўйхати (Жами: {len(all_users)} та):</b>\n\n"
 
-    for count, uid in enumerate(list(users)[-30:], start=1):
-        name = user_names.get(uid, "Номаълум")
-        balance = user_balances.get(uid, 0)
+    for count, u in enumerate(all_users[-30:], start=1):
+        name = u['username'] or "Номаълум"
+        balance = u['balance']
+        uid = u['user_id']
         text += f"{count}. {name} (ID: <code>{uid}</code>) — 💎 {balance} балл\n"
 
-    if len(users) > 30:
-        text += f"\n<i>...ва яна {len(users) - 30} та фойдаланувчи бор.</i>"
+    if len(all_users) > 30:
+        text += f"\n<i>...ва яна {len(all_users) - 30} та фойдаланувчи бор.</i>"
 
     await message.answer(text, parse_mode="HTML", reply_markup=get_admin_menu())
 
@@ -558,9 +569,11 @@ async def admin_broadcast_send(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer("🚀 Рассылка юбориш жараёни бошланди...")
 
+    all_users = await db_get_all_users()
     success = 0
     failed = 0
-    for uid in list(users):
+    for u in all_users:
+        uid = u['user_id']
         try:
             if bot:
                 await message.copy_to(chat_id=uid)
@@ -605,19 +618,20 @@ async def admin_balance_get_amount(message: types.Message, state: FSMContext):
         data = await state.get_data()
         target_id = data.get("target_id")
 
-        user_balances[target_id] = user_balances.get(target_id, 0) + amount
-        save_users_data()
+        await db_update_balance_and_tasks(target_id, balance_change=amount)
+        updated_user = await db_get_user(target_id)
+        new_balance = updated_user["balance"]
         await state.clear()
 
         await message.answer(
-            f"✅ Муваффақиятли! Фойдаланувчининг янги баланси: <b>{user_balances[target_id]} балл</b>",
+            f"✅ Муваффақиятли! Фойдаланувчининг янги баланси: <b>{new_balance} балл</b>",
             parse_mode="HTML",
             reply_markup=get_admin_menu()
         )
 
         try:
             if bot:
-                await bot.send_message(target_id, f"🎁 Админ томонидан балансингиз ўзгартирилди! Жорий баланс: {user_balances[target_id]} балл")
+                await bot.send_message(target_id, f"🎁 Админ томонидан балансингиз ўзгартирилди! Жорий баланс: {new_balance} балл")
         except Exception:
             pass
 
@@ -762,7 +776,7 @@ async def main():
         print("❌ Хатолик: BOT_TOKEN созланмаганлиги сабабли бот ишга тушмади!")
         return
 
-    print("Тасбеҳ боти polling орқали ишга тушмоқда...")
+    print("Тасбеҳ боти polling орқали PostgreSQL базаси билан ишга тушмоқда...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
