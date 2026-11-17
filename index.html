@@ -6,24 +6,10 @@
 <title>Тасбеҳ & Зикр</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-<!-- ================= ADSGRAM & MONETAG REKLAMA SOZLAMALARI ================= -->
-<!-- 1. Adsgram SDK -->
-<script src="https://sad.adsgram.ai/js/sad.min.js"></script>
-<script>
-  // Adsgram sozlamalari (Block ID: 56561)
-  const ADSGRAM_BLOCK_ID = "56561"; 
-  
-  let adsgramAdController = null;
-  document.addEventListener("DOMContentLoaded", () => {
-    if (typeof Adsgram !== 'undefined') {
-      adsgramAdController = Adsgram.init({ blockId: ADSGRAM_BLOCK_ID });
-    }
-  });
-</script>
-
-<!-- 2. Monetag SDK (Yangilangan zona: 12266127) -->
+<!-- ================= MONETAG REKLAMA SOZLAMALARI ================= -->
+<!-- Monetag SDK (Zona: 12266127) -->
 <script src='//libtl.com/sdk.js' data-zone='12266127' data-sdk='show_12266127'></script>
-<!-- ======================================================================= -->
+<!-- =============================================================== -->
 
 <style>
 * {
@@ -904,30 +890,14 @@ tapBtn.addEventListener('click', () => {
   }
 });
 
-// Reklama tugmasi bosilganda Adsgram orqali reklamani ko'rsatish
+// Reklama tugmasi bosilganda Monetag ishlaydi
 adsBtn.addEventListener('click', () => {
-  if (adsgramAdController) {
-    adsgramAdController.show().then((result) => {
-      // Reklama muvaffaqiyatli ko'rildi
-      grantAdReward();
-    }).catch((err) => {
-      // Xatolik yoki reklama ko'rsatilmadi, Monetag zaxira sifatida ishlaydi (12266127)
-      try {
-        if (typeof show_12266127 === 'function') {
-          show_12266127();
-        }
-      } catch (e) {}
-      grantAdReward();
-    });
-  } else {
-    // Agar Adsgram yuklanmagan bo'lsa, Monetag ishlaydi (12266127)
-    try {
-      if (typeof show_12266127 === 'function') {
-        show_12266127();
-      }
-    } catch (e) {}
-    grantAdReward();
-  }
+  try {
+    if (typeof show_12266127 === 'function') {
+      show_12266127();
+    }
+  } catch (e) {}
+  grantAdReward();
 
   if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
 });
