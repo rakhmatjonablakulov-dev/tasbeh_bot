@@ -579,6 +579,7 @@ let currentLangCode = 'uz';
 let currentZikrIndex = 0;
 let overrideArabicText = null;
 let userBalance = parseInt(localStorage.getItem('user_balance'), 10) || 0;
+let isZikrAdLoading = false;
 
 const i18nZikrs = [
   { uz: "Субҳаналлоҳ", ru: "Субханаллах", arabic: "سُبْحَانَ ٱللَّهِ", key: "tasbih_subhanallah" },
@@ -900,8 +901,35 @@ document.getElementById('closeModalBtn').addEventListener('click', () => {
   document.getElementById('ratingModal').classList.remove('active');
 });
 
+async function openZikrWithMonetagAd(idx) {
+  if (isZikrAdLoading) return;
+  if (typeof show_12266127 !== 'function') {
+    showToast("⚠️ Реклама SDK ҳали юкланмаган");
+    return;
+  }
+  isZikrAdLoading = true;
+  try {
+    const result = show_12266127();
+    if (result && typeof result.then === 'function') {
+      await result;
+    }
+    currentZikrIndex = idx;
+    overrideArabicText = null;
+    updateUI();
+    if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged();
+  } catch (e) {
+    showToast("❌ Реклама якунланмади ёки бекор қилинди");
+  } finally {
+    isZikrAdLoading = false;
+  }
+}
+
 tabs.forEach((tab, idx) => {
   tab.addEventListener('click', () => {
+    if (idx === 0 || idx === 3) {
+      openZikrWithMonetagAd(idx);
+      return;
+    }
     currentZikrIndex = idx;
     overrideArabicText = null;
     updateUI();
