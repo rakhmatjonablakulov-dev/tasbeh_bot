@@ -7,7 +7,6 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
 <!-- ================= MONETAG REKLAMA SOZLAMALARI ================= -->
-<!-- Monetag SDK (Zona: 12266127) -->
 <script src='//libtl.com/sdk.js' data-zone='12266127' data-sdk='show_12266127'></script>
 <!-- =============================================================== -->
 
@@ -157,6 +156,13 @@ body {
   margin: auto 0;
   z-index: 2;
 }
+.badges-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
 .total-counter-badge {
   font-size: 12px;
   color: #f1c40f;
@@ -165,7 +171,6 @@ body {
   padding: 3px 12px;
   border-radius: 20px;
   display: inline-block;
-  margin-bottom: 6px;
   backdrop-filter: blur(4px);
   font-weight: 500;
 }
@@ -259,6 +264,10 @@ body {
   cursor: pointer;
   box-shadow: 0 4px 12px rgba(243, 156, 18, 0.4);
   line-height: 1.3;
+}
+.ads-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 .footer {
   width: 100%;
@@ -436,7 +445,10 @@ body {
 
 <div class="counter-container">
   <div><span class="milestone-toast" id="milestoneToast">✨ 33 та тўлди! ✨</span></div>
-  <div class="total-counter-badge" id="totalBadge">Жами зикр: 0</div>
+  <div class="badges-row">
+    <div class="total-counter-badge" id="totalBadge">Жами зикр: 0</div>
+    <div class="total-counter-badge" id="balanceBadge">Балл: 0</div>
+  </div>
   <div class="counter-value" id="counter">0</div>
   <div class="counter-arabic" id="arabicText">سُبْحَانَ ٱللَّهِ</div>
   <div class="counter-label" id="zikrLabel">Субҳаналлоҳ марта ўқилди</div>
@@ -505,7 +517,12 @@ body {
 
 <script>
 const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
-if (tg) { try { tg.expand(); } catch (e) {} }
+if (tg) {
+  try {
+    tg.expand();
+    if (typeof tg.ready === 'function') tg.ready();
+  } catch (e) {}
+}
 
 const translations = {
   uz: {
@@ -514,6 +531,7 @@ const translations = {
     prayerText: "🕌 Намоз",
     collectionText: "📚 Тўплам",
     totalText: "Жами зикр",
+    balanceText: "Балл",
     tap: "Зикр",
     reset: "Ноллаш 🔄",
     suffix: "марта ўқилди",
@@ -537,6 +555,7 @@ const translations = {
     prayerText: "🕌 Намаз",
     collectionText: "📚 Сборник",
     totalText: "Всего зикров",
+    balanceText: "Баллы",
     tap: "Зикр",
     reset: "Сброс 🔄",
     suffix: "прочитано раз",
@@ -558,7 +577,8 @@ const translations = {
 
 let currentLangCode = 'uz';
 let currentZikrIndex = 0;
-let userBalance = parseInt(localStorage.getItem('user_balance')) || 0;
+let overrideArabicText = null;
+let userBalance = parseInt(localStorage.getItem('user_balance'), 10) || 0;
 
 const i18nZikrs = [
   { uz: "Субҳаналлоҳ", ru: "Субханаллах", arabic: "سُبْحَانَ ٱللَّهِ", key: "tasbih_subhanallah" },
@@ -618,6 +638,7 @@ const prayerBtn = document.getElementById('prayerBtn');
 const collectionBtn = document.getElementById('collectionBtn');
 const counterDisplay = document.getElementById('counter');
 const totalBadge = document.getElementById('totalBadge');
+const balanceBadge = document.getElementById('balanceBadge');
 const arabicText = document.getElementById('arabicText');
 const zikrLabel = document.getElementById('zikrLabel');
 const tapBtn = document.getElementById('tapBtn');
@@ -648,7 +669,7 @@ citySelect.value = selectedCity;
 
 async function fetchLivePrayerTimes(city) {
   try {
-    const res = await fetch(`https://api.aladhan.com/v1/timingsByCity?city=${city}&country=Uzbekistan&method=3&school=1`);
+    const res = await fetch(`https://api.aladhan.com/v1/timingsByCity?city=${encodeURIComponent(city)}&country=Uzbekistan&method=3&school=1`);
     const data = await res.json();
     if (data && data.data && data.data.timings) {
       const t = data.data.timings;
@@ -678,8 +699,14 @@ document.body.addEventListener('click', () => {
 
 function calculateTotalZikr() {
   return i18nZikrs.reduce((sum, zikr) => {
-    return sum + (parseInt(localStorage.getItem(zikr.key)) || 0);
+    return sum + (parseInt(localStorage.getItem(zikr.key), 10) || 0);
   }, 0);
+}
+
+function formatCycle(count) {
+  if (count === 0) return "0 / 33";
+  const mod = count % 33;
+  return `${mod === 0 ? 33 : mod} / 33`;
 }
 
 function updateUI() {
@@ -706,11 +733,12 @@ function updateUI() {
   });
 
   const zikrObj = i18nZikrs[currentZikrIndex];
-  const count = parseInt(localStorage.getItem(zikrObj.key)) || 0;
+  const count = parseInt(localStorage.getItem(zikrObj.key), 10) || 0;
   counterDisplay.textContent = count;
-  cycleIndicator.textContent = `${count % 33} / 33`;
+  cycleIndicator.textContent = formatCycle(count);
   totalBadge.textContent = `${t.totalText}: ${calculateTotalZikr()}`;
-  arabicText.textContent = zikrObj.arabic;
+  balanceBadge.textContent = `${t.balanceText}: ${userBalance}`;
+  arabicText.textContent = overrideArabicText || zikrObj.arabic;
   zikrLabel.textContent = `${zikrObj[currentLangCode]} ${t.suffix}`;
 }
 
@@ -783,7 +811,9 @@ function renderPrayerTimes() {
 
 document.getElementById('testAzhanBtn').addEventListener('click', () => {
   if (azhanAudio.paused) {
-    azhanAudio.play().catch(() => {});
+    azhanAudio.play().catch(() => {
+      showToast("⚠️ Азон аудиосини ишга тушириб бўлмади");
+    });
   } else {
     azhanAudio.pause();
     azhanAudio.currentTime = 0;
@@ -793,7 +823,7 @@ document.getElementById('testAzhanBtn').addEventListener('click', () => {
 function renderCollection() {
   const t = translations[currentLangCode];
   let html = "";
-  zikrCollectionData.forEach((item) => {
+  zikrCollectionData.forEach((item, idx) => {
     const title = item[currentLangCode];
     const meaning = currentLangCode === 'ru' ? item.meaningRu : item.meaningUz;
     html += `
@@ -801,21 +831,25 @@ function renderCollection() {
         <div class="title-uz">${title}</div>
         <div class="ar-text">${item.arabic}</div>
         <div class="meaning">💡 ${meaning}</div>
-        <button class="select-zikr-btn" onclick="selectFromCollection(${item.targetIndex}, '${item.arabic.replace(/'/g, "\\'")}')">${t.selectBtn}</button>
+        <button class="select-zikr-btn" data-col-idx="${idx}">${t.selectBtn}</button>
         <div style="clear:both;"></div>
       </div>
     `;
   });
-  document.getElementById('collectionModalBody').innerHTML = html;
+  const bodyEl = document.getElementById('collectionModalBody');
+  bodyEl.innerHTML = html;
+  bodyEl.querySelectorAll('.select-zikr-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const item = zikrCollectionData[Number(btn.dataset.colIdx)];
+      if (!item) return;
+      currentZikrIndex = item.targetIndex;
+      overrideArabicText = item.arabic;
+      updateUI();
+      document.getElementById('collectionModal').classList.remove('active');
+      if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+    });
+  });
 }
-
-window.selectFromCollection = function(targetIdx, arText) {
-  currentZikrIndex = targetIdx;
-  i18nZikrs[targetIdx].arabic = arText;
-  updateUI();
-  document.getElementById('collectionModal').classList.remove('active');
-  if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-};
 
 collectionBtn.addEventListener('click', () => {
   renderCollection();
@@ -849,12 +883,15 @@ ratingBtn.addEventListener('click', () => {
 
   let listHtml = `👤 <b>${userName}</b><br><br>`;
   i18nZikrs.forEach(zikr => {
-    const count = parseInt(localStorage.getItem(zikr.key)) || 0;
+    const count = parseInt(localStorage.getItem(zikr.key), 10) || 0;
     listHtml += `<div class="rating-row"><span>${zikr[currentLangCode]}:</span> <b>${count} ${t.unit}</b></div>`;
   });
 
   listHtml += `<br><div class="rating-row" style="border-top: 1px solid #f1c40f; padding-top: 6px;">
     <span><b>${t.grandTotalLabel}</b></span> <b style="color: #f1c40f;">${calculateTotalZikr()} ${t.unit}</b>
+  </div>`;
+  listHtml += `<div class="rating-row">
+    <span><b>${t.balanceText}:</b></span> <b style="color: #f1c40f;">${userBalance}</b>
   </div>`;
   document.getElementById('ratingModalBody').innerHTML = listHtml;
   document.getElementById('ratingModal').classList.add('active');
@@ -866,6 +903,7 @@ document.getElementById('closeModalBtn').addEventListener('click', () => {
 tabs.forEach((tab, idx) => {
   tab.addEventListener('click', () => {
     currentZikrIndex = idx;
+    overrideArabicText = null;
     updateUI();
     if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged();
   });
@@ -873,11 +911,11 @@ tabs.forEach((tab, idx) => {
 
 tapBtn.addEventListener('click', () => {
   const zikrObj = i18nZikrs[currentZikrIndex];
-  let count = (parseInt(localStorage.getItem(zikrObj.key)) || 0) + 1;
+  let count = (parseInt(localStorage.getItem(zikrObj.key), 10) || 0) + 1;
   localStorage.setItem(zikrObj.key, count);
 
   counterDisplay.textContent = count;
-  cycleIndicator.textContent = `${count % 33 === 0 ? 33 : count % 33} / 33`;
+  cycleIndicator.textContent = formatCycle(count);
   totalBadge.textContent = `${translations[currentLangCode].totalText}: ${calculateTotalZikr()}`;
 
   if (count % 33 === 0) {
@@ -890,34 +928,34 @@ tapBtn.addEventListener('click', () => {
   }
 });
 
-// Reklama tugmasi bosilganda Monetag ishlaydi
-adsBtn.addEventListener('click', () => {
+// Reklama tugmasi bosilganda Monetag SDK ishlaydi
+adsBtn.addEventListener('click', async () => {
+  if (typeof show_12266127 !== 'function') {
+    showToast("⚠️ Реклама SDK ҳали юкланмаган");
+    return;
+  }
+  adsBtn.disabled = true;
   try {
-    if (typeof show_12266127 === 'function') {
-      show_12266127();
+    const result = show_12266127();
+    if (result && typeof result.then === 'function') {
+      await result;
     }
-  } catch (e) {}
-  grantAdReward();
-
-  if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+    grantAdReward();
+    if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+  } catch (e) {
+    showToast("❌ Реклама якунланмади ёки бекор қилинди");
+  } finally {
+    adsBtn.disabled = false;
+  }
 });
 
 function grantAdReward() {
-  let rewardAmount = 10;
+  const rewardAmount = 10;
   userBalance += rewardAmount;
   localStorage.setItem('user_balance', userBalance);
+  balanceBadge.textContent = `${translations[currentLangCode].balanceText}: ${userBalance}`;
 
   showToast(`🎉 Табриклаймиз! Реклама учун +${rewardAmount} балл қўшилди! (Баланс: ${userBalance})`);
-
-  if (tg) {
-    try {
-      tg.sendData(JSON.stringify({ action: "add_bonus", points: rewardAmount }));
-    } catch (err) {
-      try {
-        tg.sendData("watched_ad");
-      } catch (e) {}
-    }
-  }
 }
 
 function showToast(text) {
