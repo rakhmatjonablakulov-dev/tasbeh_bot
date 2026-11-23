@@ -25,12 +25,18 @@ bot = Bot(token=TOKEN) if TOKEN else None
 dp = Dispatcher()
 
 TASKS_FILE = "tasks.json"
+db_pool = None
+
 
 # --- ПОСТГРЕСС БАЗА БИЛАН ИШЛАШ ФУНКЦИЯЛАРИ ---
 async def get_db_pool():
+    global db_pool
     if not DATABASE_URL:
         return None
-    return await asyncpg.create_pool(DATABASE_URL, ssl="require")
+    if db_pool is None:
+        db_pool = await asyncpg.create_pool(DATABASE_URL, ssl="require", min_size=1, max_size=5)
+    return db_pool
+
 
 async def db_get_user(user_id: int):
     pool = await get_db_pool()
@@ -48,26 +54,29 @@ async def db_get_user(user_id: int):
                 "completed_tasks": tasks or {}
             }
         else:
-            # Янги фойдаланувчини базага қўшиш
             await conn.execute("""
                 INSERT INTO tasbeh_users (user_id, balance, username, completed_tasks)
                 VALUES ($1, $2, $3, $4::jsonb)
                 ON CONFLICT (user_id) DO NOTHING
             """, user_id, 1000 if user_id == ADMIN_ID else 0, "Admin" if user_id == ADMIN_ID else "Foydalanuvchi", json.dumps({}))
-            return {"balance": 1000 if user_id == ADMIN_ID else 0, "username": "Admin" if user_id == ADMIN_ID else "Foydalanuvchi", "completed_tasks": {}}
+            return {
+                "balance": 1000 if user_id == ADMIN_ID else 0,
+                "username": "Admin" if user_id == ADMIN_ID else "Foydalanuvchi",
+                "completed_tasks": {}
+            }
+
 
 async def db_update_balance_and_tasks(user_id: int, balance_change: int = 0, completed_tasks: dict = None, username: str = None):
     pool = await get_db_pool()
     if not pool:
         return
     async with pool.acquire() as conn:
-        # Аввал фойдаланувчи борлигини текширамиз ва йўқ бўлса яратамиз
         await conn.execute("""
             INSERT INTO tasbeh_users (user_id, balance, username, completed_tasks)
             VALUES ($1, 0, '', '{}'::jsonb)
             ON CONFLICT (user_id) DO NOTHING
         """, user_id)
-        
+
         if balance_change != 0:
             await conn.execute("UPDATE tasbeh_users SET balance = balance + $2 WHERE user_id = $1", user_id, balance_change)
         if completed_tasks is not None:
@@ -75,13 +84,15 @@ async def db_update_balance_and_tasks(user_id: int, balance_change: int = 0, com
         if username:
             await conn.execute("UPDATE tasbeh_users SET username = $2 WHERE user_id = $1", user_id, username)
 
+
 async def db_get_all_users():
     pool = await get_db_pool()
     if not pool:
         return []
     async with pool.acquire() as conn:
-        rows = await conn.fetch("SELECT user_id, balance, username FROM tasbeh_users")
+        rows = await conn.fetch("SELECT user_id, balance, username FROM tasbeh_users ORDER BY user_id DESC")
         return [dict(r) for r in rows]
+
 
 # --- ВАЗИФАЛАРНИ САҚЛАШ ВА ЎҚИШ (Файл орқали) ---
 def load_tasks():
@@ -90,28 +101,30 @@ def load_tasks():
             with open(TASKS_FILE, "r", encoding="utf-8") as f:
                 tasks = json.load(f)
                 current_time = time.time()
-                
+
                 active_tasks = []
                 for task in tasks:
                     expires_at = task.get('expires_at')
                     if expires_at is None or expires_at > current_time:
                         active_tasks.append(task)
-                
+
                 if len(active_tasks) != len(tasks):
                     save_tasks(active_tasks)
-                    
+
                 return active_tasks
         except Exception:
             pass
-            
-    return [                 
+
+    return [
         {"id": 1, "title": "📢 Расмий каналга обуна бўлиш", "reward": 50, "url": "https://t.me/telegram", "expires_at": None},
         {"id": 2, "title": "⭐ Лойиҳани қўллаб-қувватлаш", "reward": 30, "url": "https://t.me/telegram", "expires_at": None}
     ]
 
+
 def save_tasks(tasks):
     with open(TASKS_FILE, "w", encoding="utf-8") as f:
         json.dump(tasks, f, ensure_ascii=False, indent=4)
+
 
 def delete_task_by_id(task_id):
     tasks = load_tasks()
@@ -119,17 +132,18 @@ def delete_task_by_id(task_id):
     save_tasks(tasks)
     return tasks
 
+
 tasks_list = load_tasks()
 
-class WithdrawStates(StatesGroup):
-    waiting_for_details = State()
 
 class AdminBroadcast(StatesGroup):
     waiting_for_message = State()
 
+
 class AdminBalance(StatesGroup):
     waiting_user_id = State()
     waiting_amount = State()
+
 
 class AdminTask(StatesGroup):
     waiting_title = State()
@@ -137,17 +151,16 @@ class AdminTask(StatesGroup):
     waiting_url = State()
     waiting_hours = State()
 
+
 def get_main_menu():
     builder = ReplyKeyboardBuilder()
     builder.button(text="📿 Т А С Б Е Х Н И  О Ч И Ш")
-    builder.button(text="💰 Баланс")
-    builder.button(text="💳 Пулни ечиб олиш")
     builder.button(text="🏆 Рейтинг")
     builder.button(text="👥 Дўстларни таклиф")
     builder.button(text="📋 Вазифалар")
-    builder.button(text="⭐ Рекламани кўриш")
-    builder.adjust(1, 2, 2, 2)
+    builder.adjust(1, 2, 1)
     return builder.as_markup(resize_keyboard=True)
+
 
 def get_admin_menu():
     builder = ReplyKeyboardBuilder()
@@ -158,14 +171,15 @@ def get_admin_menu():
     builder.button(text="📋 Вазифа қўшиш")
     builder.button(text="📋 Вазифаларни бошқариш")
     builder.button(text="⬅️ Асосий меню")
-    builder.adjust(2, 2, 2, 2, 1)
+    builder.adjust(2, 2, 2, 1)
     return builder.as_markup(resize_keyboard=True)
+
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     user_id = message.from_user.id
     user_name = message.from_user.first_name or "Foydalanuvchi"
-    
+
     await db_update_balance_and_tasks(user_id, balance_change=0, username=user_name)
 
     args = message.text.split()
@@ -173,7 +187,6 @@ async def cmd_start(message: types.Message):
         referrer_id = int(args[1])
 
         if referrer_id != user_id:
-            # Реферерга +2000 балл қўшиш
             await db_update_balance_and_tasks(referrer_id, balance_change=2000)
 
             try:
@@ -197,10 +210,12 @@ async def cmd_start(message: types.Message):
 
     await message.answer(welcome_text, reply_markup=get_main_menu(), parse_mode="HTML")
 
+
 @dp.message(F.text == "⬅️ Асосий меню")
 async def back_to_main_menu(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer("✨ Асосий менюга қайтдингиз.", reply_markup=get_main_menu())
+
 
 @dp.message(F.text == "📿 Т А С Б Е Х Н И  О Ч И Ш")
 async def open_tasbih(message: types.Message):
@@ -213,116 +228,12 @@ async def open_tasbih(message: types.Message):
         parse_mode="HTML"
     )
 
-@dp.message(F.text == "💰 Баланс")
-async def check_balance(message: types.Message):
-    user_data = await db_get_user(message.from_user.id)
-    balance = user_data["balance"]
-    await message.answer(
-        f"💰 <b>Сизнинг ҳисобингиз:</b>\n\n"
-        f"💎 Жорий баланс: <b>{balance} балл</b>\n"
-        f"💳 Энг кам пул ечиш миқдори: <b>500 000 балл</b>",
-        parse_mode="HTML",
-        reply_markup=get_main_menu()
-    )
-
-@dp.message(F.text == "💳 Пулни ечиб олиш")
-async def process_withdrawal(message: types.Message, state: FSMContext):
-    user_data = await db_get_user(message.from_user.id)
-    balance = user_data["balance"]
-    MIN_WITHDRAW = 500000
-
-    if balance < MIN_WITHDRAW:
-        needed = MIN_WITHDRAW - balance
-        await message.answer(
-            f"❌ <b>Пулни ечиб олиш учун балансингиз етарли эмас!</b>\n\n"
-            f"💎 Жорий балансингиз: <b>{balance} балл</b>\n"
-            f"📊 Энг кам миқдор: <b>{MIN_WITHDRAW} балл</b>\n"
-            f"⚠️ Пул чиқариш учун яна <b>({needed})</b> балл етмайди.\n\n"
-            "<i>Кўпроқ вазифаларни бажаринг ва дўстларингизни таклиф қилинг! (+2000 балл)</i>",
-            parse_mode="HTML",
-            reply_markup=get_main_menu()
-        )
-        return
-
-    await message.answer(
-        "💳 <b>Маблағни ечиб олиш маркази</b>\n\n"
-        f"💎 Балансингиз етарли: <b>{balance} балл</b>\n\n"
-        "Тўплаган балларни картага ёки телефон рақамига ўтказиш учун реквизитларингизни юборинг.\n\n"
-        "<i>(Масалан: 8600 1234 5678 9012 / Исм Шариф ва банк номи)</i>\n\n"
-        "❌ Бекор қилиш учун /cancel ни босинг.",
-        parse_mode="HTML"
-    )
-    await state.set_state(WithdrawStates.waiting_for_details)
 
 @dp.message(Command("cancel"))
 async def cancel_handler(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer("❌ Жараён бекор қилинди.", reply_markup=get_main_menu())
 
-@dp.message(WithdrawStates.waiting_for_details)
-async def receive_withdrawal_details(message: types.Message, state: FSMContext):
-    user = message.from_user
-    details = message.text
-    user_data = await db_get_user(user.id)
-    balance = user_data["balance"]
-
-    if balance < 500000:
-        await message.answer("❌ Балансингиз етарли эмас!", reply_markup=get_main_menu())
-        await state.clear()
-        return
-
-    withdrawn_amount = balance
-    await db_update_balance_and_tasks(user.id, balance_change=-withdrawn_amount)
-
-    admin_text = (
-        f"🔔 <b>Янги пул чиқариш сўрови!</b>\n\n"
-        f"👤 Фойдаланувчи: @{user.username or 'йўқ'} (ID: <code>{user.id}</code>)\n"
-        f"Исми: {user.first_name}\n"
-        f"💎 Ечилаётган сумма: <b>{withdrawn_amount} балл</b>\n"
-        f"💳 Реквизит:\n<code>{details}</code>"
-    )
-
-    try:
-        builder = InlineKeyboardBuilder()
-        builder.button(text="✅ Тўлаб берилди", callback_data=f"pay_yes_{user.id}_{withdrawn_amount}")
-        builder.button(text="❌ Рад этиш", callback_data=f"pay_no_{user.id}_{withdrawn_amount}")
-        builder.adjust(2)
-
-        if bot:
-            await bot.send_message(ADMIN_ID, admin_text, reply_markup=builder.as_markup(), parse_mode="HTML")
-
-        await message.answer(
-            "✅ <b>Сўровингиз қабул қилинди!</b>\n\n"
-            "Администратор текширувидан кейин маблағ картангизга ўтказиб берилади.",
-            reply_markup=get_main_menu(),
-            parse_mode="HTML"
-        )
-    except Exception:
-        await db_update_balance_and_tasks(user.id, balance_change=withdrawn_amount)
-        await message.answer("❌ Хатолик юз берди. Кейинроқ қайта уриниб кўринг.", reply_markup=get_main_menu())
-
-    await state.clear()
-
-@dp.callback_query(F.data.startswith("pay_"))
-async def admin_payment_decision(callback: types.CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("Сизда бунинг учун ҳуқуқ йўқ!", show_alert=True)
-        return
-
-    parts = callback.data.split("_")
-    action, user_id, amount = parts[1], int(parts[2]), int(parts[3])
-
-    if action == "yes":
-        if bot:
-            await bot.send_message(user_id, "🎉 <b>Табриклаймиз!</b> Пул чиқариш сўровингиз тасдиқланди ва маблағ картангизга ўтказилди!", parse_mode="HTML")
-        await callback.message.edit_text(callback.message.text + "\n\n<b>✅ Статус: ТЎЛАНДИ ВА ЯКУНЛАНДИ</b>", parse_mode="HTML")
-    else:
-        await db_update_balance_and_tasks(user_id, balance_change=amount)
-        if bot:
-            await bot.send_message(user_id, f"❌ Афсус, сўровингиз рад этилди. <b>{amount} балл</b> балансингизга қайтарилди.", parse_mode="HTML")
-        await callback.message.edit_text(callback.message.text + "\n\n<b>❌ Статус: РАД ЭТИЛДИ (Балл қайтарилди)</b>", parse_mode="HTML")
-
-    await callback.answer("Бажарилди!")
 
 @dp.message(F.text == "🏆 Рейтинг")
 async def show_leaderboard(message: types.Message):
@@ -345,6 +256,7 @@ async def show_leaderboard(message: types.Message):
 
     await message.answer(text, parse_mode="HTML", reply_markup=get_main_menu())
 
+
 @dp.message(F.text == "👥 Дўстларни таклиф")
 async def process_referral(message: types.Message):
     if bot:
@@ -361,22 +273,22 @@ async def process_referral(message: types.Message):
         parse_mode="HTML"
     )
 
+
 @dp.message(F.text == "📋 Вазифалар")
 async def process_tasks(message: types.Message):
     global tasks_list
     tasks_list = load_tasks()
-    
+
     if not tasks_list:
         await message.answer("📋 Ҳозирча янги вазифалар мавжуд эмас.", reply_markup=get_main_menu())
         return
-    
+
     user_id = message.from_user.id
     user_data = await db_get_user(user_id)
     completed_tasks_dict = user_data["completed_tasks"]
-    
-    #completed_tasks_dict format: {str(task_id): True}
+
     active_tasks = [task for task in tasks_list if str(task['id']) not in completed_tasks_dict and task['id'] not in completed_tasks_dict]
-    
+
     if not active_tasks:
         await message.answer(
             "🎉 <b>Табриклаймиз!</b>\n\nСиз барча мавжуд вазифаларни бажариб бўлдингиз.\nТегишли янги вазифалар қўшилишини кутинг!",
@@ -384,20 +296,21 @@ async def process_tasks(message: types.Message):
             reply_markup=get_main_menu()
         )
         return
-    
+
     await message.answer("📋 <b>Кунлик вазифалар ва бонуслар</b>\n\nҚуйидаги вазифаларни бажариб баллар жамғаринг:", parse_mode="HTML")
-    
+
     for task in active_tasks:
         builder = InlineKeyboardBuilder()
         builder.button(text="🔗 Бажариш", url=task['url'])
         builder.button(text="🎁 Текшириш", callback_data=f"check_task_{task['id']}")
         builder.adjust(2)
-        
+
         await message.answer(
             f"📌 <b>{task['title']}</b>\n🎁 Мукофот: <b>+{task['reward']} балл</b>",
             reply_markup=builder.as_markup(),
             parse_mode="HTML"
         )
+
 
 @dp.callback_query(F.data.startswith(("check_task_", "noop_", "ok_task_")))
 async def task_callback_handler(callback: types.CallbackQuery):
@@ -418,7 +331,7 @@ async def task_callback_handler(callback: types.CallbackQuery):
     global tasks_list
     tasks_list = load_tasks()
     target_task = next((t for t in tasks_list if t['id'] == task_id), None)
-    
+
     if not target_task:
         await callback.answer("Вазифа топилмади ёки муддати тугаган!", show_alert=True)
         try:
@@ -467,35 +380,26 @@ async def task_callback_handler(callback: types.CallbackQuery):
     except Exception:
         pass
 
-@dp.message(F.text == "⭐ Рекламани кўриш")
-async def process_ads_view(message: types.Message):
-    builder = InlineKeyboardBuilder()
-    builder.button(text="⭐ Рекламани кўриш ва сақлаб қолиш", web_app=types.WebAppInfo(url=WEBAPP_URL))
-    await message.answer(
-        "⭐ <b>Тасбеҳлар сони учиб кетмаслиги учун</b>\n\n"
-        "Рекламани кўриш орқали лойиҳамизни қўллаб-қувватланг.",
-        reply_markup=builder.as_markup(),
-        parse_mode="HTML"
-    )
 
 @dp.message(F.web_app_data)
 async def web_app_data_handler(message: Message):
     user_id = message.from_user.id
     data = message.web_app_data.data
-    
+
     user_data = await db_get_user(user_id)
-        
+
     if "add_bonus" in data or "watched_ad" in data or data:
         reward = 10
         await db_update_balance_and_tasks(user_id, balance_change=reward)
         new_balance = user_data["balance"] + reward
-        
+
         await message.answer(
             f"🎉 <b>Табриклаймиз!</b>\n"
             f"⭐ Рекламани кўрганингиз учун ҳисобингизга <b>+{reward} балл</b> қўшилди!\n"
             f"💎 Жорий балансингиз: <b>{new_balance} балл</b>",
             parse_mode="HTML"
         )
+
 
 @dp.message(Command("admin"))
 async def admin_panel(message: types.Message):
@@ -510,6 +414,7 @@ async def admin_panel(message: types.Message):
         parse_mode="HTML"
     )
 
+
 @dp.message(F.text == "📊 Статистика")
 async def admin_stats(message: types.Message):
     if message.from_user.id != ADMIN_ID:
@@ -522,6 +427,7 @@ async def admin_stats(message: types.Message):
         reply_markup=get_admin_menu()
     )
 
+
 @dp.message(F.text == "👥 Фойдаланувчилар")
 async def admin_users_list(message: types.Message):
     if message.from_user.id != ADMIN_ID:
@@ -532,18 +438,23 @@ async def admin_users_list(message: types.Message):
         await message.answer("📭 Ҳозирча ботга кирган фойдаланувчилар йўқ.", reply_markup=get_admin_menu())
         return
 
-    text = f"👥 <b>Ботдаги фойдаланувчилар рўйхати (Жами: {len(all_users)} та):</b>\n\n"
+    header = f"👥 <b>Ботдаги фойдаланувчилар рўйхати (Жами: {len(all_users)} та):</b>\n\n"
+    chunk = header
 
-    for count, u in enumerate(all_users[-30:], start=1):
+    for count, u in enumerate(all_users, start=1):
         name = u['username'] or "Номаълум"
-        balance = u['balance']
         uid = u['user_id']
-        text += f"{count}. {name} (ID: <code>{uid}</code>) — 💎 {balance} балл\n"
+        line = f"{count}. <b>{name}</b> — ID: <code>{uid}</code>\n"
 
-    if len(all_users) > 30:
-        text += f"\n<i>...ва яна {len(all_users) - 30} та фойдаланувчи бор.</i>"
+        if len(chunk) + len(line) > 3800:
+            await message.answer(chunk, parse_mode="HTML")
+            chunk = line
+        else:
+            chunk += line
 
-    await message.answer(text, parse_mode="HTML", reply_markup=get_admin_menu())
+    if chunk:
+        await message.answer(chunk, parse_mode="HTML", reply_markup=get_admin_menu())
+
 
 @dp.message(F.text == "📢 Рассылка юбориш")
 async def admin_broadcast_start(message: types.Message, state: FSMContext):
@@ -555,6 +466,7 @@ async def admin_broadcast_start(message: types.Message, state: FSMContext):
         "<i>Бекор қилиш учун 'отмена' денг.</i>",
         parse_mode="HTML"
     )
+
 
 @dp.message(AdminBroadcast.waiting_for_message)
 async def admin_broadcast_send(message: types.Message, state: FSMContext):
@@ -590,12 +502,14 @@ async def admin_broadcast_send(message: types.Message, state: FSMContext):
         reply_markup=get_admin_menu()
     )
 
+
 @dp.message(F.text == "💰 Балансни бошқариш")
 async def admin_balance_start(message: types.Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
         return
     await state.set_state(AdminBalance.waiting_user_id)
     await message.answer("🆔 Балансини ўзгартирмоқчи бўлган фойдаланувчининг <b>Telegram ID</b> сини киритинг:", parse_mode="HTML")
+
 
 @dp.message(AdminBalance.waiting_user_id)
 async def admin_balance_get_id(message: types.Message, state: FSMContext):
@@ -608,6 +522,7 @@ async def admin_balance_get_id(message: types.Message, state: FSMContext):
         await message.answer(f"✍️ Фойдаланувчи (ID: {target_id}) учун қўшиладиган ёки айриладиган балл миқдорини киритинг (Масалан: <code>100</code> ёки <code>-50</code>):", parse_mode="HTML")
     except ValueError:
         await message.answer("❌ Фақат рақамлардан иборат ID киритинг:")
+
 
 @dp.message(AdminBalance.waiting_amount)
 async def admin_balance_get_amount(message: types.Message, state: FSMContext):
@@ -638,12 +553,14 @@ async def admin_balance_get_amount(message: types.Message, state: FSMContext):
     except ValueError:
         await message.answer("❌ Фақат бутун рақам киритинг (масалан: 50 ёки -20):")
 
+
 @dp.message(F.text == "📋 Вазифа қўшиш")
 async def admin_task_start(message: types.Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
         return
     await state.set_state(AdminTask.waiting_title)
     await message.answer("✍️ Янги вазифа номини ва шартини киритинг (Масалан: <code>📢 Телеграм каналга обуна бўлиш</code>):", parse_mode="HTML")
+
 
 @dp.message(AdminTask.waiting_title)
 async def admin_task_get_title(message: types.Message, state: FSMContext):
@@ -652,6 +569,7 @@ async def admin_task_get_title(message: types.Message, state: FSMContext):
     await state.update_data(title=message.text)
     await state.set_state(AdminTask.waiting_reward)
     await message.answer("💰 Ушбу вазифа учун бериладиган мукофот (балл) миқдорини рақамда киритинг (Масалан: <code>50</code>):", parse_mode="HTML")
+
 
 @dp.message(AdminTask.waiting_reward)
 async def admin_task_get_reward(message: types.Message, state: FSMContext):
@@ -664,6 +582,7 @@ async def admin_task_get_reward(message: types.Message, state: FSMContext):
         await message.answer("🔗 Вазифа учун ҳаволани (URL ёки t.me манзилини) киритинг:")
     except ValueError:
         await message.answer("❌ Фақат рақам киритинг (масалан: 50):")
+
 
 @dp.message(AdminTask.waiting_url)
 async def admin_task_get_url(message: types.Message, state: FSMContext):
@@ -678,6 +597,7 @@ async def admin_task_get_url(message: types.Message, state: FSMContext):
         parse_mode="HTML"
     )
 
+
 @dp.message(AdminTask.waiting_hours)
 async def admin_task_get_hours(message: types.Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
@@ -688,28 +608,28 @@ async def admin_task_get_hours(message: types.Message, state: FSMContext):
         title = data.get("title")
         reward = data.get("reward")
         url = data.get("url")
-        
+
         expires_at = None
         if hours > 0:
             expires_at = time.time() + (hours * 3600)
-            
+
         global tasks_list
-        tasks_list = load_tasks() 
-        
+        tasks_list = load_tasks()
+
         new_id = max((t['id'] for t in tasks_list), default=0) + 1
         new_task = {
-            "id": new_id, 
-            "title": title, 
-            "reward": reward, 
+            "id": new_id,
+            "title": title,
+            "reward": reward,
             "url": url,
             "expires_at": expires_at
         }
-        
+
         tasks_list.append(new_task)
-        save_tasks(tasks_list) 
-        
+        save_tasks(tasks_list)
+
         await state.clear()
-        
+
         time_info = f"{hours} соат" if hours > 0 else "Чексиз (муддатсиз)"
         await message.answer(
             f"✅ <b>Янги вазифа муваффақиятли қўшилди!</b>\n\n"
@@ -723,24 +643,25 @@ async def admin_task_get_hours(message: types.Message, state: FSMContext):
     except ValueError:
         await message.answer("❌ Фақат бутун рақам киритинг (масалан: 24 ёки 0):")
 
+
 @dp.message(F.text == "📋 Вазифаларни бошқариш")
 async def admin_manage_tasks(message: types.Message):
     if message.from_user.id != ADMIN_ID:
         return
-        
+
     global tasks_list
     tasks_list = load_tasks()
-    
+
     if not tasks_list:
         await message.answer("📭 Ҳозирча фаол вазифалар йўқ.", reply_markup=get_admin_menu())
         return
-        
+
     await message.answer("📋 <b>Амалдаги вазифалар рўйхати:</b>\nКеракли вазифани ўчириш учун қуйидаги тугмани босинг:", parse_mode="HTML")
-    
+
     for task in tasks_list:
         builder = InlineKeyboardBuilder()
         builder.button(text="🗑 Ўчириш (Бекор қилиш)", callback_data=f"del_task_{task['id']}")
-        
+
         expires_str = "Чексиз"
         if task.get('expires_at'):
             remaining = int((task['expires_at'] - time.time()) / 3600)
@@ -752,24 +673,26 @@ async def admin_manage_tasks(message: types.Message):
             parse_mode="HTML"
         )
 
+
 @dp.callback_query(F.data.startswith("del_task_"))
 async def callback_delete_task(callback: types.CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
         await callback.answer("Сизда бу ҳуқуқ йўқ!", show_alert=True)
         return
-        
+
     task_id = int(callback.data.split("_")[2])
-    
+
     remaining_tasks = delete_task_by_id(task_id)
     global tasks_list
     tasks_list = remaining_tasks
-    
+
     await callback.answer("✅ Вазифа муваффақиятли ўчирилди!", show_alert=True)
-    
+
     try:
         await callback.message.edit_text("❌ <b>Ушбу вазифа бекор қилинди ва ўчирилди.</b>", parse_mode="HTML")
     except Exception:
         pass
+
 
 async def main():
     if not bot:
@@ -778,6 +701,7 @@ async def main():
 
     print("Тасбеҳ боти polling орқали PostgreSQL базаси билан ишга тушмоқда...")
     await dp.start_polling(bot)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
