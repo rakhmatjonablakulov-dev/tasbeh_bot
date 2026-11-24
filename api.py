@@ -7,6 +7,8 @@ from contextlib import asynccontextmanager
 
 import asyncpg
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from aiogram import Bot
 
 # Импортируем диспетчер и бота из вашего файла bot.py
@@ -27,6 +29,12 @@ USERS_FILE = Path("users_data.json")
 bot = tg_bot if tg_bot else (Bot(token=TOKEN) if TOKEN else None)
 db_pool = None
 bot_task = None
+
+
+class ZikrSyncPayload(BaseModel):
+    user_id: int
+    username: str = ""
+    total_zikr: int
 
 
 # =====================================
@@ -130,7 +138,7 @@ async def lifespan(app: FastAPI):
     await migrate_json_data()
 
     print("PostgreSQL connected successfully!")
-    print("Monetag reward system ready (REWARDS DISABLED / TEST MODE)!")
+    print("Monetag reward system ready (REWARDS DISABLED)!")
 
     if bot and dp:
         await bot.delete_webhook(drop_pending_updates=True)
@@ -155,6 +163,71 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Tasbeh Bot API", lifespan=lifespan)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# =====================================
+# LEADERBOARD & ZIKR SYNC ENDPOINTS
+# =====================================
+
+@app.get("/leaderboard")
+async def get_leaderboard(limit: int = Query(default=20, ge=1, le=100)):
+    async with db_pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT user_id, COALESCE(username, '') AS username, COALESCE(balance, 0) AS total_zikr
+            FROM tasbeh_users
+            ORDER BY COALESCE(balance, 0) DESC, user_id ASC
+            LIMIT $1
+        """, limit)
+
+    leaderboard = [
+        {
+            "rank": idx,
+            "user_id": r["user_id"],
+            "username": r["username"] or f"Фойдаланувчи {r['user_id']}",
+            "total_zikr": int(r["total_zikr"] or 0)
+        }
+        for idx, r in enumerate(rows, start=1)
+    ]
+
+    return {
+        "status": "ok",
+        "leaderboard": leaderboard
+    }
+
+
+@app.post("/sync-zikr")
+async def sync_zikr(payload: ZikrSyncPayload):
+    if payload.user_id <= 0 or payload.total_zikr < 0:
+        raise HTTPException(status_code=400, detail="Invalid payload")
+
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow("""
+            INSERT INTO tasbeh_users (user_id, balance, username)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user_id)
+            DO UPDATE SET
+                balance = GREATEST(COALESCE(tasbeh_users.balance, 0), $2),
+                username = CASE WHEN $3 <> '' THEN $3 ELSE tasbeh_users.username END
+            RETURNING balance
+        """,
+            payload.user_id,
+            payload.total_zikr,
+            payload.username.strip()
+        )
+
+    return {
+        "status": "ok",
+        "user_id": payload.user_id,
+        "total_zikr": int(row["balance"] or 0)
+    }
+
 
 # =====================================
 # MONETAG PROCESSING (REWARDS DISABLED)
@@ -174,12 +247,6 @@ async def process_reward(
     estimated_price: str = "",
     request_var: str = ""
 ):
-    # ⚠️ ВРЕМЕННО ОТКЛЮЧЕНО ДЛЯ ТЕСТИРОВАНИЯ (Секрет не проверяется)
-    # if not MONETAG_SECRET:
-    #     raise HTTPException(status_code=500, detail="MONETAG_SECRET is missing in Render")
-    # if not secret or not hmac.compare_digest(secret, MONETAG_SECRET):
-    #     raise HTTPException(status_code=403, detail="Invalid secret")
-
     user_value = telegram_id or userid
 
     if not user_value or not user_value.isdigit():
@@ -236,14 +303,6 @@ async def process_reward(
                 """,
                     user_id
                 )
-
-        print(
-            f"MONETAG EVENT RECORDED (NO REWARD): "
-            f"user={user_id}, "
-            f"reward=0, "
-            f"balance={current_balance}, "
-            f"ymid={unique_id}"
-        )
 
         return {
             "status": "ok",
