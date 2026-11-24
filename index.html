@@ -699,6 +699,7 @@ function sendTotalZikrToBot() {
   }
 }
 
+// Фақат реклама кўрсатилади, ҳеч қандай балл қўшилмайди
 async function runMonetagAd() {
   if (typeof show_12266127 !== 'function') {
     showToast("⚠️ Реклама SDK ҳали юкланмаган");
@@ -908,7 +909,7 @@ document.getElementById('closeModalBtn').addEventListener('click', () => {
   document.getElementById('ratingModal').classList.remove('active');
 });
 
-// idx === 3 -> Астағфируллоҳ: аввал реклама, сўнг счётчик/зикр экрани очилади
+// idx === 3 -> Астағфируллоҳ: аввал реклама, сўнг счётчик очилади (балл берилмайди)
 tabs.forEach((tab, idx) => {
   tab.addEventListener('click', async () => {
     if (idx === 3) {
@@ -947,7 +948,7 @@ tapBtn.addEventListener('click', () => {
   }
 });
 
-// Рейтингга юбориш: аввал реклама, сўнг зикрлар жами саноғи рейтингга юборилади
+// Рейтингга юбориш: аввал реклама, сўнг фақат зикрлар жами саноғи рейтингга юборилади (балл берилмайди)
 syncBtn.addEventListener('click', async () => {
   if (isAdBusy) return;
   isAdBusy = true;
