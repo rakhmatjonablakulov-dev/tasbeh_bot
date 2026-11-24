@@ -1,7 +1,9 @@
-import os 
+import os
 import asyncio
 import json
 import time
+from contextlib import asynccontextmanager
+
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import Message
 from aiogram.filters import Command
@@ -9,6 +11,9 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 import asyncpg
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 # Настройки бота ва ўзгарувчилар
 TOKEN = os.getenv("BOT_TOKEN")
@@ -26,6 +31,13 @@ dp = Dispatcher()
 
 TASKS_FILE = "tasks.json"
 db_pool = None
+bot_task = None
+
+
+class ZikrSyncPayload(BaseModel):
+    user_id: int
+    username: str = ""
+    total_zikr: int
 
 
 # --- ПОСТГРЕСС БАЗА БИЛАН ИШЛАШ ФУНКЦИЯЛАРИ ---
@@ -36,6 +48,32 @@ async def get_db_pool():
     if db_pool is None:
         db_pool = await asyncpg.create_pool(DATABASE_URL, ssl="require", min_size=1, max_size=5)
     return db_pool
+
+
+async def ensure_tables():
+    pool = await get_db_pool()
+    if not pool:
+        return
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS tasbeh_users (
+                user_id BIGINT PRIMARY KEY,
+                balance BIGINT NOT NULL DEFAULT 0,
+                username TEXT NOT NULL DEFAULT '',
+                referred BOOLEAN NOT NULL DEFAULT FALSE,
+                completed_tasks JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+
+
+async def db_get_total_users() -> int:
+    pool = await get_db_pool()
+    if not pool:
+        return 0
+    async with pool.acquire() as conn:
+        total = await conn.fetchval("SELECT COUNT(*) FROM tasbeh_users")
+        return int(total or 0)
 
 
 async def db_get_user(user_id: int):
@@ -122,7 +160,12 @@ async def db_get_all_users():
 def build_leaderboard_text(all_users: list, current_user_id: int = None) -> str:
     sorted_users = sorted(all_users, key=lambda x: int(x.get("balance") or 0), reverse=True)
     medals = ["🥇", "🥈", "🥉"]
-    lines = ["🏆 <b>Умумий фойдаланувчилар рейтинги</b>\n━━━━━━━━━━━━━━━━━━━\n"]
+    total_users_count = len(sorted_users)
+    lines = [
+        "🏆 <b>Умумий фойдаланувчилар рейтинги</b>",
+        f"👥 <b>Жами иштирокчилар:</b> <b>{total_users_count} та</b>",
+        "━━━━━━━━━━━━━━━━━━━\n"
+    ]
 
     my_rank = None
     my_count = 0
@@ -244,8 +287,10 @@ async def cmd_start(message: types.Message):
     user_name = message.from_user.first_name or "Foydalanuvchi"
 
     await db_update_balance_and_tasks(user_id, balance_change=0, username=user_name)
+    total_users = await db_get_total_users()
 
     welcome_text = (
+        f"👥 <b>Жами иштирокчилар:</b> <b>{total_users} та</b>\n\n"
         f"✨ <b>Ассалому алайкум ва роҳматуллоҳи ва барокатуҳ, {user_name}!</b>\n\n"
         f"🌙 <b>«Муборак Тасбеҳ ва зикрлар»</b> ботига хуш келибсиз!\n\n"
         f"<i>«Огоҳ бўлингизким, Аллоҳни зикр қилиш билан қалблар ором олур!»</i> (Раъд сураси, 28-оят).\n\n"
@@ -843,11 +888,104 @@ async def forward_user_message_to_admin(message: types.Message):
         pass
 
 
+# --- FASTAPI (API & POLLING LIFESPAN) ---
+@asynccontextmanager
+async def lifespan(fastapi_app: FastAPI):
+    global bot_task
+    await get_db_pool()
+    await ensure_tables()
+
+    if bot and dp:
+        await bot.delete_webhook(drop_pending_updates=True)
+        bot_task = asyncio.create_task(dp.start_polling(bot))
+
+    yield
+
+    if bot_task:
+        bot_task.cancel()
+        try:
+            await bot_task
+        except asyncio.CancelledError:
+            pass
+
+    if bot:
+        await bot.session.close()
+
+    if db_pool:
+        await db_pool.close()
+
+
+app = FastAPI(title="Tasbeh Bot API", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/leaderboard")
+async def api_leaderboard(limit: int = Query(default=20, ge=1, le=100)):
+    await ensure_tables()
+    total_users = await db_get_total_users()
+    all_users = await db_get_all_users()
+    rows = all_users[:limit]
+
+    leaderboard = [
+        {
+            "rank": idx,
+            "user_id": r["user_id"],
+            "username": r.get("username") or f"Фойдаланувчи {r['user_id']}",
+            "total_zikr": int(r.get("balance") or 0)
+        }
+        for idx, r in enumerate(rows, start=1)
+    ]
+
+    return {
+        "status": "ok",
+        "total_users": total_users,
+        "leaderboard": leaderboard
+    }
+
+
+@app.post("/sync-zikr")
+async def api_sync_zikr(payload: ZikrSyncPayload):
+    if payload.user_id <= 0 or payload.total_zikr < 0:
+        raise HTTPException(status_code=400, detail="Invalid payload")
+
+    await ensure_tables()
+    await db_update_balance_and_tasks(
+        user_id=payload.user_id,
+        username=payload.username.strip() or None,
+        exact_balance=payload.total_zikr
+    )
+    updated_user = await db_get_user(payload.user_id)
+    return {
+        "status": "ok",
+        "user_id": payload.user_id,
+        "total_zikr": int(updated_user.get("balance") or 0)
+    }
+
+
+@app.get("/")
+async def api_root():
+    return {"status": "online", "service": "bot.py"}
+
+
+@app.get("/health")
+async def api_health():
+    return {"status": "ok"}
+
+
 async def main():
     if not bot:
         print("❌ Хатолик: BOT_TOKEN созланмаганлиги сабабли бот ишга тушмади!")
         return
 
+    await get_db_pool()
+    await ensure_tables()
     print("Тасбеҳ боти polling орқали PostgreSQL базаси билан ишга тушмоқда...")
     await dp.start_polling(bot)
 
