@@ -22,7 +22,6 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 ADMIN_ID = int(os.getenv("ADMIN_ID", "8274122612"))
 
-REWARD_AMOUNT = 200
 USERS_FILE = Path("users_data.json")
 
 bot = tg_bot if tg_bot else (Bot(token=TOKEN) if TOKEN else None)
@@ -51,7 +50,7 @@ async def create_tables():
             CREATE TABLE IF NOT EXISTS monetag_events (
                 event_id TEXT PRIMARY KEY,
                 user_id BIGINT NOT NULL,
-                reward BIGINT NOT NULL,
+                reward BIGINT NOT NULL DEFAULT 0,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
         """)
@@ -131,7 +130,7 @@ async def lifespan(app: FastAPI):
     await migrate_json_data()
 
     print("PostgreSQL connected successfully!")
-    print("Monetag reward system ready (TEST MODE)!")
+    print("Monetag reward system ready (REWARDS DISABLED / TEST MODE)!")
 
     if bot and dp:
         await bot.delete_webhook(drop_pending_updates=True)
@@ -158,7 +157,7 @@ app = FastAPI(title="Tasbeh Bot API", lifespan=lifespan)
 
 
 # =====================================
-# MONETAG PROCESSING (TEST MODE: SECRET OFF)
+# MONETAG PROCESSING (REWARDS DISABLED)
 # =====================================
 
 async def process_reward(
@@ -190,7 +189,7 @@ async def process_reward(
         )
 
     reward_type = reward_event_type or event_type
-    
+
     if reward_type and reward_type != "valued":
         return {
             "status": "ignored",
@@ -207,13 +206,12 @@ async def process_reward(
                     inserted = await conn.fetchval("""
                         INSERT INTO monetag_events
                         (event_id, user_id, reward)
-                        VALUES ($1, $2, $3)
+                        VALUES ($1, $2, 0)
                         ON CONFLICT (event_id) DO NOTHING
                         RETURNING event_id
                     """,
                         unique_id,
-                        user_id,
-                        REWARD_AMOUNT
+                        user_id
                     )
 
                     if not inserted:
@@ -222,47 +220,37 @@ async def process_reward(
                             "message": "This event was already processed"
                         }
 
-                row = await conn.fetchrow("""
+                await conn.execute("""
                     INSERT INTO tasbeh_users
                     (user_id, balance)
-                    VALUES ($1, $2)
-                    ON CONFLICT (user_id)
-                    DO UPDATE SET
-                        balance = tasbeh_users.balance + $2
-                    RETURNING balance
+                    VALUES ($1, 0)
+                    ON CONFLICT (user_id) DO NOTHING
                 """,
-                    user_id,
-                    REWARD_AMOUNT
+                    user_id
                 )
 
-                new_balance = row["balance"]
+                current_balance = await conn.fetchval("""
+                    SELECT balance
+                    FROM tasbeh_users
+                    WHERE user_id = $1
+                """,
+                    user_id
+                )
 
         print(
-            f"MONETAG TEST SUCCESS: "
+            f"MONETAG EVENT RECORDED (NO REWARD): "
             f"user={user_id}, "
-            f"reward={REWARD_AMOUNT}, "
-            f"balance={new_balance}, "
+            f"reward=0, "
+            f"balance={current_balance}, "
             f"ymid={unique_id}"
         )
 
-        if bot:
-            try:
-                await bot.send_message(
-                    user_id,
-                    "⭐ <b>Тест хабарномаси!</b>\n"
-                    f"💎 Ҳисобингизга <b>+{REWARD_AMOUNT} балл</b> қўшилди.\n"
-                    f"💰 Жами баланс: <b>{new_balance}</b>",
-                    parse_mode="HTML"
-                )
-            except Exception as e:
-                print("Telegram notification error:", str(e))
-
         return {
             "status": "ok",
-            "message": "Reward granted (Test Mode)",
+            "message": "Ad event processed without reward",
             "user_id": user_id,
-            "reward": REWARD_AMOUNT,
-            "balance": new_balance
+            "reward": 0,
+            "balance": current_balance
         }
 
     except HTTPException:
@@ -389,10 +377,10 @@ async def db_check():
 async def root():
     return {
         "status": "online",
-        "message": "Tasbeh Bot API is running (Test Mode)",
+        "message": "Tasbeh Bot API is running (Rewards Disabled)",
         "database": "PostgreSQL",
         "monetag": "bypassed",
-        "reward": REWARD_AMOUNT
+        "reward": 0
     }
 
 
