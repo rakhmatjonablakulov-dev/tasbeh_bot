@@ -215,7 +215,7 @@ body {
   justify-content: center;
   align-items: center;
   width: 100%;
-  margin-bottom: 6px;
+  margin-bottom: 10px;
   z-index: 2;
 }
 .tap-button {
@@ -243,32 +243,6 @@ body {
   transform: scale(0.93);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5), inset 0 2px 5px rgba(0, 0, 0, 0.5);
 }
-.ads-button-container {
-  width: 100%;
-  display: flex;
-  justify-content: center;
-  margin-bottom: 6px;
-  z-index: 2;
-}
-.ads-btn {
-  background: linear-gradient(135deg, #f39c12, #d35400);
-  border: 1px solid #f1c40f;
-  color: #ffffff;
-  width: 100%;
-  max-width: 340px;
-  padding: 6px 10px;
-  border-radius: 10px;
-  font-size: 10px;
-  font-weight: bold;
-  text-align: center;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(243, 156, 18, 0.4);
-  line-height: 1.3;
-}
-.ads-btn:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
-}
 .footer {
   width: 100%;
   display: flex;
@@ -290,6 +264,10 @@ body {
   font-size: 11px;
   font-weight: bold;
   cursor: pointer;
+}
+.sync-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 .reset-btn {
   background: linear-gradient(135deg, #f1c40f, #d4ac0d);
@@ -475,13 +453,6 @@ body {
   </button>
 </div>
 
-<div class="ads-button-container">
-  <button class="ads-btn" id="adsBtn">
-    <span id="adsTitleText">📢 Реклама кўриш</span><br>
-    <span id="adsSubText" style="font-size: 9px; color: #ffeaa7; font-weight: normal;">Лойиҳани қўллаб-қувватлаш учун реклама кўринг.</span>
-  </button>
-</div>
-
 <div class="footer">
   <span style="font-size: 10px; color: #f1c40f; opacity: 0.9;">🌙 Namoz & Zikr Edition</span>
   <div class="footer-btns">
@@ -553,8 +524,6 @@ const translations = {
     reset: "Ноллаш 🔄",
     suffix: "марта ўқилди",
     nextLabel: "Кейинги:",
-    adsTitle: "📢 Реклама кўриш",
-    adsSub: "Лойиҳани қўллаб-қувватлаш учун реклама кўринг.",
     prayerModalTitle: "🕌 Намоз вақтлари ва Азон",
     statModalTitle: "📊 Ҳар бир зикрнинг миқдори",
     collModalTitle: "📚 Зикр ва Саловатлар тўплами",
@@ -577,8 +546,6 @@ const translations = {
     reset: "Сброс 🔄",
     suffix: "прочитано раз",
     nextLabel: "Следующий:",
-    adsTitle: "📢 Посмотреть рекламу",
-    adsSub: "Посмотрите рекламу для поддержки проекта.",
     prayerModalTitle: "🕌 Время намаза и Азан",
     statModalTitle: "📊 Количество каждого зикра",
     collModalTitle: "📚 Сборник зикров и салаватов",
@@ -595,7 +562,7 @@ const translations = {
 let currentLangCode = 'uz';
 let currentZikrIndex = 0;
 let overrideArabicText = null;
-let isZikrAdLoading = false;
+let isAdBusy = false;
 
 const i18nZikrs = [
   { uz: "Субҳаналлоҳ", ru: "Субханаллах", arabic: "سُبْحَانَ ٱللَّهِ", key: "tasbih_subhanallah" },
@@ -661,7 +628,6 @@ const tapBtn = document.getElementById('tapBtn');
 const tapBtnText = document.getElementById('tapBtnText');
 const cycleIndicator = document.getElementById('cycleIndicator');
 const milestoneToast = document.getElementById('milestoneToast');
-const adsBtn = document.getElementById('adsBtn');
 const syncBtn = document.getElementById('syncBtn');
 const resetBtn = document.getElementById('resetBtn');
 const tabs = document.querySelectorAll('.zikr-tab');
@@ -723,13 +689,30 @@ function calculateTotalZikr() {
 function sendTotalZikrToBot() {
   const total = calculateTotalZikr();
   if (!tg || typeof tg.sendData !== 'function') {
-    showToast(`📿 Жами зикр: ${total} та`);
+    showToast(`📿 Жами зикр: ${total} та (Telegram ичида очинг)`);
     return;
   }
   try {
     tg.sendData(JSON.stringify({ total_zikr: total }));
   } catch (e) {
-    showToast("⚠️ Юборишда хатолик");
+    showToast("⚠️ Рейтингга юборишда хатолик");
+  }
+}
+
+async function runMonetagAd() {
+  if (typeof show_12266127 !== 'function') {
+    showToast("⚠️ Реклама SDK ҳали юкланмаган");
+    return false;
+  }
+  try {
+    const result = show_12266127();
+    if (result && typeof result.then === 'function') {
+      await result;
+    }
+    return true;
+  } catch (e) {
+    showToast("❌ Реклама якунланмади ёки бекор қилинди");
+    return false;
   }
 }
 
@@ -749,8 +732,6 @@ function updateUI() {
   tapBtnText.textContent = t.tap;
   resetBtn.textContent = t.reset;
   document.getElementById('nextLabel').textContent = t.nextLabel;
-  document.getElementById('adsTitleText').textContent = t.adsTitle;
-  document.getElementById('adsSubText').textContent = t.adsSub;
   document.getElementById('prayerModalTitle').textContent = t.prayerModalTitle;
   document.getElementById('modalTitleText').textContent = t.statModalTitle;
   document.getElementById('collectionModalTitle').textContent = t.collModalTitle;
@@ -927,34 +908,18 @@ document.getElementById('closeModalBtn').addEventListener('click', () => {
   document.getElementById('ratingModal').classList.remove('active');
 });
 
-async function openZikrWithMonetagAd(idx) {
-  if (isZikrAdLoading) return;
-  if (typeof show_12266127 !== 'function') {
-    showToast("⚠️ Реклама SDK ҳали юкланмаган");
-    return;
-  }
-  isZikrAdLoading = true;
-  try {
-    const result = show_12266127();
-    if (result && typeof result.then === 'function') {
-      await result;
-    }
-    currentZikrIndex = idx;
-    overrideArabicText = null;
-    updateUI();
-    if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged();
-  } catch (e) {
-    showToast("❌ Реклама якунланмади ёки бекор қилинди");
-  } finally {
-    isZikrAdLoading = false;
-  }
-}
-
+// idx === 3 -> Астағфируллоҳ: аввал реклама, сўнг счётчик/зикр экрани очилади
 tabs.forEach((tab, idx) => {
-  tab.addEventListener('click', () => {
-    if (idx === 0 || idx === 3) {
-      openZikrWithMonetagAd(idx);
-      return;
+  tab.addEventListener('click', async () => {
+    if (idx === 3) {
+      if (isAdBusy) return;
+      isAdBusy = true;
+      try {
+        const ok = await runMonetagAd();
+        if (!ok) return;
+      } finally {
+        isAdBusy = false;
+      }
     }
     currentZikrIndex = idx;
     overrideArabicText = null;
@@ -982,28 +947,18 @@ tapBtn.addEventListener('click', () => {
   }
 });
 
-syncBtn.addEventListener('click', () => {
-  sendTotalZikrToBot();
-});
-
-// Reklama tugmasi bosilganda Monetag SDK ishlaydi (ball ajratilmaydi)
-adsBtn.addEventListener('click', async () => {
-  if (typeof show_12266127 !== 'function') {
-    showToast("⚠️ Реклама SDK ҳали юкланмаган");
-    return;
-  }
-  adsBtn.disabled = true;
+// Рейтингга юбориш: аввал реклама, сўнг зикрлар жами саноғи рейтингга юборилади
+syncBtn.addEventListener('click', async () => {
+  if (isAdBusy) return;
+  isAdBusy = true;
+  syncBtn.disabled = true;
   try {
-    const result = show_12266127();
-    if (result && typeof result.then === 'function') {
-      await result;
-    }
-    showToast("✨ Реклама кўрилгани учун ташаккур!");
-    if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-  } catch (e) {
-    showToast("❌ Реклама якунланмади ёки бекор қилинди");
+    const ok = await runMonetagAd();
+    if (!ok) return;
+    sendTotalZikrToBot();
   } finally {
-    adsBtn.disabled = false;
+    isAdBusy = false;
+    syncBtn.disabled = false;
   }
 });
 
