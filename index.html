@@ -27,7 +27,7 @@ body {
   flex-direction: column;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 15px;
+  padding: 10px 14px;
   overflow-x: hidden;
   position: relative;
 }
@@ -64,7 +64,8 @@ body {
 .top-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: 6px;
   margin-bottom: 8px;
   padding: 0 2px;
 }
@@ -73,9 +74,10 @@ body {
   gap: 5px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  max-width: 245px;
 }
 .action-btn {
-  background: rgba(15, 40, 30, 0.85);
+  background: rgba(15, 40, 30, 0.88);
   border: 1px solid #f1c40f;
   color: #f1c40f;
   padding: 5px 8px;
@@ -84,12 +86,21 @@ body {
   font-weight: bold;
   cursor: pointer;
   backdrop-filter: blur(5px);
+  white-space: nowrap;
+}
+.rating-menu-btn {
+  background: linear-gradient(135deg, rgba(241, 196, 15, 0.25), rgba(15, 45, 35, 0.92));
+  color: #ffe875;
+  box-shadow: 0 0 8px rgba(241, 196, 15, 0.25);
 }
 .title {
   font-size: 14px;
   font-weight: 700;
   color: #f1c40f;
   text-shadow: 0 2px 6px rgba(0,0,0,0.8);
+  text-align: left;
+  line-height: 1.25;
+  padding-top: 2px;
 }
 .zikr-selector {
   display: flex;
@@ -301,7 +312,7 @@ body {
   background: linear-gradient(135deg, #0b3c2e, #062e21);
   border: 2px solid #f1c40f;
   width: 92%;
-  max-width: 370px;
+  max-width: 380px;
   max-height: 85vh;
   overflow-y: auto;
   padding: 16px;
@@ -325,13 +336,29 @@ body {
   padding: 10px;
   border-radius: 10px;
 }
+.section-subtitle {
+  font-size: 12px;
+  font-weight: bold;
+  color: #f1c40f;
+  margin: 10px 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(241, 196, 15, 0.35);
+}
 .rating-row, .prayer-row {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  gap: 8px;
   padding: 6px 0;
   border-bottom: 1px solid rgba(255,255,255,0.1);
 }
 .rating-row:last-child, .prayer-row:last-child { border-bottom: none; }
+.rating-row.me-highlight {
+  background: rgba(241, 196, 15, 0.14);
+  border-radius: 6px;
+  padding: 6px 6px;
+  color: #ffe875;
+}
 .modal-close-btn {
   background: linear-gradient(135deg, #f1c40f, #d4ac0d);
   border: none;
@@ -413,7 +440,7 @@ body {
     <div class="top-btns">
       <button class="action-btn" id="collectionBtn">📚 Тўплам</button>
       <button class="action-btn" id="prayerBtn">🕌 Намоз</button>
-      <button class="action-btn" id="ratingBtn">📊 Статистика</button>
+      <button class="action-btn rating-menu-btn" id="ratingBtn">🏆 Рейтинг: 0</button>
       <button class="action-btn" id="langToggleBtn">🌐 UZ</button>
     </div>
   </div>
@@ -483,10 +510,10 @@ body {
   </div>
 </div>
 
-<!-- Статистика модалкаси -->
+<!-- Рейтинг ва статистика модалкаси -->
 <div class="modal-overlay" id="ratingModal">
   <div class="modal-content">
-    <div class="modal-title" id="modalTitleText">📊 Ҳар бир зикрнинг миқдори</div>
+    <div class="modal-title" id="modalTitleText">🏆 Фойдаланувчилар рейтинги</div>
     <div class="modal-body" id="ratingModalBody">Юкланмоқда...</div>
     <button class="modal-close-btn" id="closeModalBtn">Ёпиш</button>
   </div>
@@ -512,10 +539,13 @@ if (tg) {
   } catch (e) {}
 }
 
+const API_BASE_URL = "https://tasbeh-bot-1-dldd.onrender.com";
+const LEADERBOARD_API_URL = `${API_BASE_URL}/leaderboard`;
+
 const translations = {
   uz: {
     label: "🌐 UZ",
-    ratingText: "📊 Статистика",
+    ratingPrefix: "🏆 Рейтинг",
     prayerText: "🕌 Намоз",
     collectionText: "📚 Тўплам",
     totalText: "Жами зикр",
@@ -525,19 +555,22 @@ const translations = {
     suffix: "марта ўқилди",
     nextLabel: "Кейинги:",
     prayerModalTitle: "🕌 Намоз вақтлари ва Азон",
-    statModalTitle: "📊 Ҳар бир зикрнинг миқдори",
+    statModalTitle: "🏆 Фойдаланувчилар рейтинги",
     collModalTitle: "📚 Зикр ва Саловатлар тўплами",
     close: "Ёпиш",
     confirmReset: "Ушбу зикр ҳисобини ноль ҳолатга келтиришга ишончингиз комилми?",
     selectBtn: "Танлаш 🎯",
-    grandTotalLabel: "Жами зикрлар:",
+    grandTotalLabel: "Менинг жами зикрларим:",
+    myBreakdownTitle: "📌 Зикрлар бўйича ҳисобим",
+    leaderboardTitle: "🏆 Умумий рейтинг жадвали",
     unit: "та",
+    youBadge: "(Сиз)",
     cityLabel: "📍 Шаҳар:",
     prayers: { Fajr: "Бомдод", Dhuhr: "Пешин", Asr: "Аср", Maghrib: "Шом", Isha: "Хуфтон" }
   },
   ru: {
     label: "🌐 RU",
-    ratingText: "📊 Статистика",
+    ratingPrefix: "🏆 Рейтинг",
     prayerText: "🕌 Намаз",
     collectionText: "📚 Сборник",
     totalText: "Всего зикров",
@@ -547,13 +580,16 @@ const translations = {
     suffix: "прочитано раз",
     nextLabel: "Следующий:",
     prayerModalTitle: "🕌 Время намаза и Азан",
-    statModalTitle: "📊 Количество каждого зикра",
+    statModalTitle: "🏆 Рейтинг пользователей",
     collModalTitle: "📚 Сборник зикров и салаватов",
     close: "Закрыть",
     confirmReset: "Вы уверены, что хотите обнулить счётчик этого зикра?",
     selectBtn: "Выбрать 🎯",
-    grandTotalLabel: "Всего зикров:",
+    grandTotalLabel: "Мои всего зикров:",
+    myBreakdownTitle: "📌 Статистика по зикрам",
+    leaderboardTitle: "🏆 Общая таблица рейтинга",
     unit: "раз",
+    youBadge: "(Вы)",
     cityLabel: "📍 Город:",
     prayers: { Fajr: "Фаджр", Dhuhr: "Зухр", Asr: "Аср", Maghrib: "Магриб", Isha: "Иша" }
   }
@@ -686,10 +722,84 @@ function calculateTotalZikr() {
   }, 0);
 }
 
-function sendTotalZikrToBot() {
+function updateRatingDisplays(total) {
+  const t = translations[currentLangCode];
+  ratingBtn.textContent = `${t.ratingPrefix}: ${total}`;
+  totalBadge.textContent = `${t.totalText}: ${total}`;
+}
+
+function getCurrentTgUser() {
+  try {
+    if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+      return {
+        id: tg.initDataUnsafe.user.id,
+        name: tg.initDataUnsafe.user.first_name || (currentLangCode === 'uz' ? 'Фойдаланувчи' : 'Пользователь')
+      };
+    }
+  } catch (e) {}
+  return {
+    id: null,
+    name: currentLangCode === 'uz' ? 'Фойдаланувчи' : 'Пользователь'
+  };
+}
+
+async function fetchLeaderboardRows(myUser, myTotal) {
+  if (LEADERBOARD_API_URL) {
+    try {
+      const res = await fetch(LEADERBOARD_API_URL, { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        const items = Array.isArray(data) ? data : (data.users || data.leaderboard || []);
+        if (Array.isArray(items) && items.length > 0) {
+          const normalized = items.map(item => ({
+            user_id: item.user_id,
+            name: item.username || item.name || item.first_name || `User ${item.user_id || ""}`,
+            total: Number(item.total_zikr ?? item.balance ?? item.total ?? 0) || 0,
+            isMe: myUser.id !== null && Number(item.user_id) === Number(myUser.id)
+          }));
+          if (myUser.id !== null) {
+            const idx = normalized.findIndex(x => x.isMe);
+            if (idx >= 0) {
+              normalized[idx].total = Math.max(normalized[idx].total, myTotal);
+            } else {
+              normalized.push({ user_id: myUser.id, name: myUser.name, total: myTotal, isMe: true });
+            }
+          }
+          return normalized.sort((a, b) => b.total - a.total).slice(0, 15);
+        }
+      }
+    } catch (e) {}
+  }
+
+  return [
+    { user_id: myUser.id || "me", name: myUser.name, total: myTotal, isMe: true }
+  ];
+}
+
+async function sendTotalZikrToBot() {
   const total = calculateTotalZikr();
+  const myUser = getCurrentTgUser();
+
+  if (API_BASE_URL && myUser.id) {
+    try {
+      const res = await fetch(`${API_BASE_URL}/sync-zikr`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: myUser.id,
+          username: myUser.name,
+          total_zikr: total
+        })
+      });
+      if (res.ok) {
+        showToast(`✅ Рейтинг янгиланди: ${total} та зикр`);
+        return;
+      }
+    } catch (e) {}
+  }
+
   if (!tg || typeof tg.sendData !== 'function') {
-    showToast(`📿 Жами зикр: ${total} та (Telegram ичида очинг)`);
+    showToast(`🏆 Рейтинг: ${total} та зикр`);
     return;
   }
   try {
@@ -699,7 +809,6 @@ function sendTotalZikrToBot() {
   }
 }
 
-// Фақат реклама кўрсатилади, ҳеч қандай балл қўшилмайди
 async function runMonetagAd() {
   if (typeof show_12266127 !== 'function') {
     showToast("⚠️ Реклама SDK ҳали юкланмаган");
@@ -725,8 +834,9 @@ function formatCycle(count) {
 
 function updateUI() {
   const t = translations[currentLangCode];
+  const total = calculateTotalZikr();
+
   langToggleBtn.textContent = t.label;
-  ratingBtn.textContent = t.ratingText;
   prayerBtn.textContent = t.prayerText;
   collectionBtn.textContent = t.collectionText;
   syncBtn.textContent = t.syncText;
@@ -749,7 +859,7 @@ function updateUI() {
   const count = parseInt(localStorage.getItem(zikrObj.key), 10) || 0;
   counterDisplay.textContent = count;
   cycleIndicator.textContent = formatCycle(count);
-  totalBadge.textContent = `${t.totalText}: ${calculateTotalZikr()}`;
+  updateRatingDisplays(total);
   arabicText.textContent = overrideArabicText || zikrObj.arabic;
   zikrLabel.textContent = `${zikrObj[currentLangCode]} ${t.suffix}`;
 }
@@ -884,32 +994,46 @@ langToggleBtn.addEventListener('click', () => {
   updateUI();
 });
 
-ratingBtn.addEventListener('click', () => {
+ratingBtn.addEventListener('click', async () => {
   const t = translations[currentLangCode];
-  let userName = currentLangCode === 'uz' ? 'Фойдаланувчи' : 'Пользователь';
-  try {
-    if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
-      userName = tg.initDataUnsafe.user.first_name || userName;
-    }
-  } catch (e) {}
+  const myUser = getCurrentTgUser();
+  const total = calculateTotalZikr();
 
-  let listHtml = `👤 <b>${userName}</b><br><br>`;
-  i18nZikrs.forEach(zikr => {
-    const count = parseInt(localStorage.getItem(zikr.key), 10) || 0;
-    listHtml += `<div class="rating-row"><span>${zikr[currentLangCode]}:</span> <b>${count} ${t.unit}</b></div>`;
+  document.getElementById('ratingModalBody').innerHTML = "Юкланмоқда...";
+  document.getElementById('ratingModal').classList.add('active');
+
+  const leaderboardRows = await fetchLeaderboardRows(myUser, total);
+  const medals = ["🥇", "🥈", "🥉"];
+
+  let html = `<div class="section-subtitle">${t.leaderboardTitle}</div>`;
+  leaderboardRows.forEach((row, idx) => {
+    const rankLabel = medals[idx] || `${idx + 1}.`;
+    const meTag = row.isMe ? ` <b>${t.youBadge}</b>` : "";
+    html += `
+      <div class="rating-row ${row.isMe ? 'me-highlight' : ''}">
+        <span>${rankLabel} <b>${row.name}</b>${meTag}</span>
+        <b style="color:#f1c40f;">${row.total} ${t.unit}</b>
+      </div>
+    `;
   });
 
-  listHtml += `<br><div class="rating-row" style="border-top: 1px solid #f1c40f; padding-top: 6px;">
-    <span><b>${t.grandTotalLabel}</b></span> <b style="color: #f1c40f;">${calculateTotalZikr()} ${t.unit}</b>
+  html += `<div class="section-subtitle">${t.myBreakdownTitle}</div>`;
+  i18nZikrs.forEach(zikr => {
+    const count = parseInt(localStorage.getItem(zikr.key), 10) || 0;
+    html += `<div class="rating-row"><span>${zikr[currentLangCode]}:</span> <b>${count} ${t.unit}</b></div>`;
+  });
+
+  html += `<div class="rating-row" style="border-top: 1px solid #f1c40f; padding-top: 6px; margin-top: 4px;">
+    <span><b>${t.grandTotalLabel}</b></span> <b style="color: #f1c40f;">${total} ${t.unit}</b>
   </div>`;
-  document.getElementById('ratingModalBody').innerHTML = listHtml;
-  document.getElementById('ratingModal').classList.add('active');
+
+  document.getElementById('ratingModalBody').innerHTML = html;
 });
+
 document.getElementById('closeModalBtn').addEventListener('click', () => {
   document.getElementById('ratingModal').classList.remove('active');
 });
 
-// idx === 3 -> Астағфируллоҳ: аввал реклама, сўнг счётчик очилади (балл берилмайди)
 tabs.forEach((tab, idx) => {
   tab.addEventListener('click', async () => {
     if (idx === 3) {
@@ -934,9 +1058,10 @@ tapBtn.addEventListener('click', () => {
   let count = (parseInt(localStorage.getItem(zikrObj.key), 10) || 0) + 1;
   localStorage.setItem(zikrObj.key, count);
 
+  const total = calculateTotalZikr();
   counterDisplay.textContent = count;
   cycleIndicator.textContent = formatCycle(count);
-  totalBadge.textContent = `${translations[currentLangCode].totalText}: ${calculateTotalZikr()}`;
+  updateRatingDisplays(total);
 
   if (count % 33 === 0) {
     milestoneToast.textContent = `✨ ${count} та тўлди! ✨`;
@@ -948,7 +1073,6 @@ tapBtn.addEventListener('click', () => {
   }
 });
 
-// Рейтингга юбориш: аввал реклама, сўнг фақат зикрлар жами саноғи рейтингга юборилади (балл берилмайди)
 syncBtn.addEventListener('click', async () => {
   if (isAdBusy) return;
   isAdBusy = true;
@@ -956,7 +1080,7 @@ syncBtn.addEventListener('click', async () => {
   try {
     const ok = await runMonetagAd();
     if (!ok) return;
-    sendTotalZikrToBot();
+    await sendTotalZikrToBot();
   } finally {
     isAdBusy = false;
     syncBtn.disabled = false;
