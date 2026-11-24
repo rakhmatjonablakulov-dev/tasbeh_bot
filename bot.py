@@ -91,7 +91,7 @@ async def db_update_balance_and_tasks(
             )
         elif balance_change != 0:
             await conn.execute(
-                "UPDATE tasbeh_users SET balance = COALESCE(balance, 0) + $2 WHERE user_id = $1",
+                "UPDATE tasbeh_users SET balance = GREATEST(0, COALESCE(balance, 0) + $2) WHERE user_id = $1",
                 user_id,
                 balance_change
             )
@@ -117,6 +117,33 @@ async def db_get_all_users():
             ORDER BY COALESCE(balance, 0) DESC, user_id DESC
         """)
         return [dict(r) for r in rows]
+
+
+def build_leaderboard_text(all_users: list, current_user_id: int = None) -> str:
+    sorted_users = sorted(all_users, key=lambda x: int(x.get("balance") or 0), reverse=True)
+    medals = ["🥇", "🥈", "🥉"]
+    lines = ["🏆 <b>Умумий фойдаланувчилар рейтинги</b>\n━━━━━━━━━━━━━━━━━━━\n"]
+
+    my_rank = None
+    my_count = 0
+
+    for index, u in enumerate(sorted_users, start=1):
+        uid = u.get("user_id")
+        name = u.get("username") or f"Фойдаланувчи {uid}"
+        zikr_count = int(u.get("balance") or 0)
+        if current_user_id is not None and int(uid) == int(current_user_id):
+            my_rank = index
+            my_count = zikr_count
+
+        if index <= 15:
+            prefix = medals[index - 1] if index <= 3 else f"<b>{index}.</b>"
+            me_mark = " <i>(Сиз)</i>" if current_user_id is not None and int(uid) == int(current_user_id) else ""
+            lines.append(f"{prefix} <b>{name}</b>{me_mark} — 📿 <b>{zikr_count} та</b>")
+
+    if my_rank is not None:
+        lines.append(f"\n━━━━━━━━━━━━━━━━━━━\n📌 Сизнинг ўрнингиз: <b>#{my_rank}</b> (📿 <b>{my_count} та зикр</b>)")
+
+    return "\n".join(lines)
 
 
 # --- ВАЗИФАЛАРНИ САҚЛАШ ВА ЎҚИШ (Файл орқали) ---
@@ -216,7 +243,6 @@ async def cmd_start(message: types.Message):
     user_id = message.from_user.id
     user_name = message.from_user.first_name or "Foydalanuvchi"
 
-    # Дўст таклиф қилганда балл берилмайди
     await db_update_balance_and_tasks(user_id, balance_change=0, username=user_name)
 
     welcome_text = (
@@ -260,26 +286,8 @@ async def show_leaderboard(message: types.Message):
         await message.answer("📭 Ҳозирча рейтинг маълумотлари йўқ.", reply_markup=get_main_menu())
         return
 
-    sorted_users = sorted(all_users, key=lambda x: int(x.get("balance") or 0), reverse=True)
-    medals = ["🥇", "🥈", "🥉"]
-
-    header = "🏆 <b>Фойдаланувчилар рейтинги (тўпланган зикрлар саноғи)</b>\n\n━━━━━━━━━━━━━━━━━━━\n\n"
-    chunk = header
-
-    for index, u in enumerate(sorted_users, start=1):
-        name = u.get("username") or f"Фойдаланувчи {u['user_id']}"
-        zikr_count = int(u.get("balance") or 0)
-        prefix = medals[index - 1] if index <= 3 else f"{index}."
-        line = f"{prefix} <b>{name}</b> — 📿 <b>{zikr_count} та зикр</b>\n"
-
-        if len(chunk) + len(line) > 3800:
-            await message.answer(chunk, parse_mode="HTML")
-            chunk = line
-        else:
-            chunk += line
-
-    if chunk:
-        await message.answer(chunk, parse_mode="HTML", reply_markup=get_main_menu())
+    text = build_leaderboard_text(all_users, current_user_id=message.from_user.id)
+    await message.answer(text, parse_mode="HTML", reply_markup=get_main_menu())
 
 
 @dp.message(F.text == "👥 Дўстларни таклиф")
@@ -427,8 +435,10 @@ async def web_app_data_handler(message: Message):
             username=user_name,
             exact_balance=total_zikr
         )
+        all_users = await db_get_all_users()
+        rank_text = build_leaderboard_text(all_users, current_user_id=user_id)
         await message.answer(
-            f"📿 Зикрлар саноғи янгиланди: <b>{total_zikr} та зикр</b>",
+            f"✅ Зикрлар саноғи рейтингга қўшилди: <b>{total_zikr} та зикр</b>\n\n{rank_text}",
             parse_mode="HTML",
             reply_markup=get_main_menu()
         )
