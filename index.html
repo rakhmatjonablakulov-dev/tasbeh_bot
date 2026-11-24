@@ -74,7 +74,7 @@ body {
   gap: 5px;
   flex-wrap: wrap;
   justify-content: flex-end;
-  max-width: 255px;
+  max-width: 245px;
 }
 .action-btn {
   background: rgba(15, 40, 30, 0.88);
@@ -440,7 +440,6 @@ body {
     <div class="top-btns">
       <button class="action-btn" id="collectionBtn">📚 Тўплам</button>
       <button class="action-btn" id="prayerBtn">🕌 Намоз</button>
-      <button class="action-btn rating-menu-btn" id="usersMenuBtn">👥 Иштирокчилар: 0</button>
       <button class="action-btn rating-menu-btn" id="ratingBtn">🏆 Рейтинг: 0</button>
       <button class="action-btn" id="langToggleBtn">🌐 UZ</button>
     </div>
@@ -544,7 +543,6 @@ const translations = {
   uz: {
     label: "🌐 UZ",
     ratingPrefix: "🏆 Рейтинг",
-    usersPrefix: "👥 Иштирокчилар",
     prayerText: "🕌 Намоз",
     collectionText: "📚 Тўплам",
     totalText: "Жами зикр",
@@ -560,7 +558,6 @@ const translations = {
     confirmReset: "Ушбу зикр ҳисобини ноль ҳолатга келтиришга ишончингиз комилми?",
     selectBtn: "Танлаш 🎯",
     grandTotalLabel: "Менинг жами зикрларим:",
-    totalUsersLabel: "👥 Жами иштирокчилар:",
     myBreakdownTitle: "📌 Зикрлар бўйича ҳисобим",
     leaderboardTitle: "🏆 Умумий рейтинг жадвали",
     unit: "та",
@@ -571,7 +568,6 @@ const translations = {
   ru: {
     label: "🌐 RU",
     ratingPrefix: "🏆 Рейтинг",
-    usersPrefix: "👥 Участники",
     prayerText: "🕌 Намаз",
     collectionText: "📚 Сборник",
     totalText: "Всего зикров",
@@ -587,7 +583,6 @@ const translations = {
     confirmReset: "Вы уверены, что хотите обнулить счётчик этого зикра?",
     selectBtn: "Выбрать 🎯",
     grandTotalLabel: "Мои всего зикров:",
-    totalUsersLabel: "👥 Всего участников:",
     myBreakdownTitle: "📌 Статистика по зикрам",
     leaderboardTitle: "🏆 Общая таблица рейтинга",
     unit: "раз",
@@ -601,7 +596,6 @@ let currentLangCode = 'uz';
 let currentZikrIndex = 0;
 let overrideArabicText = null;
 let isAdBusy = false;
-let serverTotalUsers = 0;
 
 const i18nZikrs = [
   { uz: "Субҳаналлоҳ", ru: "Субханаллах", arabic: "سُبْحَانَ ٱللَّهِ", key: "tasbih_subhanallah" },
@@ -656,7 +650,6 @@ const zikrCollectionData = [
 ];
 
 const langToggleBtn = document.getElementById('langToggleBtn');
-const usersMenuBtn = document.getElementById('usersMenuBtn');
 const ratingBtn = document.getElementById('ratingBtn');
 const prayerBtn = document.getElementById('prayerBtn');
 const collectionBtn = document.getElementById('collectionBtn');
@@ -732,26 +725,6 @@ function updateRatingDisplays(total) {
   totalBadge.textContent = `${t.totalText}: ${total}`;
 }
 
-function updateAllUsersButton() {
-  const t = translations[currentLangCode];
-  if (usersMenuBtn) {
-    usersMenuBtn.textContent = `${t.usersPrefix}: ${serverTotalUsers}`;
-  }
-}
-
-async function fetchTotalUsersCount() {
-  try {
-    const res = await fetch(`${API_BASE_URL}/leaderboard?limit=1`, { cache: "no-store" });
-    if (res.ok) {
-      const data = await res.json();
-      if (typeof data.total_users === "number") {
-        serverTotalUsers = data.total_users;
-        updateAllUsersButton();
-      }
-    }
-  } catch (e) {}
-}
-
 function getCurrentTgUser() {
   try {
     if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
@@ -773,10 +746,6 @@ async function fetchLeaderboardRows(myUser, myTotal) {
       const res = await fetch(LEADERBOARD_API_URL, { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
-        if (typeof data.total_users === "number") {
-          serverTotalUsers = data.total_users;
-          updateAllUsersButton();
-        }
         const items = Array.isArray(data) ? data : (data.users || data.leaderboard || []);
         if (Array.isArray(items) && items.length > 0) {
           const normalized = items.map(item => ({
@@ -820,7 +789,6 @@ async function sendTotalZikrToBot() {
         })
       });
       if (res.ok) {
-        await fetchTotalUsersCount();
         showToast(`✅ Рейтинг янгиланди: ${total} та зикр`);
         return;
       }
@@ -889,7 +857,6 @@ function updateUI() {
   counterDisplay.textContent = count;
   cycleIndicator.textContent = formatCycle(count);
   updateRatingDisplays(total);
-  updateAllUsersButton();
   arabicText.textContent = overrideArabicText || zikrObj.arabic;
   zikrLabel.textContent = `${zikrObj[currentLangCode]} ${t.suffix}`;
 }
@@ -1024,7 +991,7 @@ langToggleBtn.addEventListener('click', () => {
   updateUI();
 });
 
-async function openRatingAndUsersModal() {
+ratingBtn.addEventListener('click', async () => {
   const t = translations[currentLangCode];
   const myUser = getCurrentTgUser();
   const total = calculateTotalZikr();
@@ -1035,11 +1002,7 @@ async function openRatingAndUsersModal() {
   const leaderboardRows = await fetchLeaderboardRows(myUser, total);
   const medals = ["🥇", "🥈", "🥉"];
 
-  let html = `<div class="rating-row" style="margin-bottom: 6px;">
-    <span><b>${t.totalUsersLabel}</b></span> <b style="color: #f1c40f;">${serverTotalUsers}</b>
-  </div>`;
-
-  html += `<div class="section-subtitle">${t.leaderboardTitle}</div>`;
+  let html = `<div class="section-subtitle">${t.leaderboardTitle}</div>`;
   leaderboardRows.forEach((row, idx) => {
     const rankLabel = medals[idx] || `${idx + 1}.`;
     const meTag = row.isMe ? ` <b>${t.youBadge}</b>` : "";
@@ -1062,10 +1025,7 @@ async function openRatingAndUsersModal() {
   </div>`;
 
   document.getElementById('ratingModalBody').innerHTML = html;
-}
-
-usersMenuBtn.addEventListener('click', openRatingAndUsersModal);
-ratingBtn.addEventListener('click', openRatingAndUsersModal);
+});
 
 document.getElementById('closeModalBtn').addEventListener('click', () => {
   document.getElementById('ratingModal').classList.remove('active');
@@ -1154,8 +1114,6 @@ resetBtn.addEventListener('click', () => {
 });
 
 updateUI();
-fetchTotalUsersCount();
-setInterval(fetchTotalUsersCount, 30000);
 </script>
 </body>
 </html>
