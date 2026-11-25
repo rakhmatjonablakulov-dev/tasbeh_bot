@@ -250,13 +250,25 @@ class AdminDirectChat(StatesGroup):
     chatting = State()
 
 
+class UserHelpChat(StatesGroup):
+    waiting_message = State()
+
+
 def get_main_menu():
     builder = ReplyKeyboardBuilder()
     builder.button(text="📿 Т А С Б Е Х Н И  О Ч И Ш")
     builder.button(text="🏆 Рейтинг")
     builder.button(text="👥 Дўстларни таклиф")
     builder.button(text="📋 Вазифалар")
-    builder.adjust(1, 2, 1)
+    builder.button(text="🆘 ЁРДАМ")
+    builder.adjust(1, 2, 2)
+    return builder.as_markup(resize_keyboard=True)
+
+
+def get_help_cancel_menu():
+    builder = ReplyKeyboardBuilder()
+    builder.button(text="⬅️ Асосий меню")
+    builder.adjust(1)
     return builder.as_markup(resize_keyboard=True)
 
 
@@ -281,8 +293,15 @@ def get_chat_active_menu():
     return builder.as_markup(resize_keyboard=True)
 
 
+def get_admin_reply_keyboard(user_id: int):
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✍️ Жавоб бериш", callback_data=f"reply_user_{user_id}")
+    return builder.as_markup()
+
+
 @dp.message(Command("start"))
-async def cmd_start(message: types.Message):
+async def cmd_start(message: types.Message, state: FSMContext):
+    await state.clear()
     user_id = message.from_user.id
     user_name = message.from_user.first_name or "Foydalanuvchi"
 
@@ -304,6 +323,102 @@ async def cmd_start(message: types.Message):
 async def back_to_main_menu(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer("✨ Асосий менюга қайтдингиз.", reply_markup=get_main_menu())
+
+
+# --- ФОЙДАЛАНУВЧИ ЁРДАМ БЎЛИМИ (БОТ ОРҚАЛИ АДМИНГА БОҒЛАНИШ) ---
+@dp.message(F.text == "🆘 ЁРДАМ")
+async def user_help_start(message: types.Message, state: FSMContext):
+    await state.set_state(UserHelpChat.waiting_message)
+    await message.answer(
+        "🆘 <b>Ёрдам маркази</b>\n\n"
+        "Админнинг шахсий аккаунтига ўтмасдан, шу ерда савол ёки мурожаатингизни ёзинг. "
+        "Хабарингиз бот орқали админга юборилади ва сизга шу бот орқали жавоб қайтарилади.\n\n"
+        "<i>Бекор қилиш учун <b>⬅️ Асосий меню</b> тугмасини босинг.</i>",
+        reply_markup=get_help_cancel_menu(),
+        parse_mode="HTML"
+    )
+
+
+@dp.message(UserHelpChat.waiting_message)
+async def user_help_send_to_admin(message: types.Message, state: FSMContext):
+    if message.text == "⬅️ Асосий меню":
+        await state.clear()
+        await message.answer("✨ Асосий менюга қайтдингиз.", reply_markup=get_main_menu())
+        return
+
+    if not bot:
+        await state.clear()
+        await message.answer("❌ Вақтинча техник хатолик юз берди.", reply_markup=get_main_menu())
+        return
+
+    u_id = message.from_user.id
+    u_name = message.from_user.full_name or "Foydalanuvchi"
+    u_handle = f"@{message.from_user.username}" if message.from_user.username else "йўқ"
+
+    header = (
+        f"🆘 <b>ЁРДАМ БЎЛИМИДАН МУРОЖААТ</b>\n"
+        f"👤 Исм: <b>{u_name}</b>\n"
+        f"🆔 ID: <code>{u_id}</code>\n"
+        f"🔗 Username: {u_handle}\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+    )
+
+    reply_markup = get_admin_reply_keyboard(u_id)
+
+    try:
+        if message.text:
+            await bot.send_message(
+                chat_id=ADMIN_ID,
+                text=header + message.text,
+                reply_markup=reply_markup,
+                parse_mode="HTML"
+            )
+        else:
+            await bot.send_message(
+                chat_id=ADMIN_ID,
+                text=header,
+                reply_markup=reply_markup,
+                parse_mode="HTML"
+            )
+            await message.copy_to(chat_id=ADMIN_ID)
+
+        await state.clear()
+        await message.answer(
+            "✅ <b>Мурожаатингиз админга юборилди!</b>\n\n"
+            "Админ хабарингизни кўриб, сизга шу бот орқали жавоб юборади.",
+            reply_markup=get_main_menu(),
+            parse_mode="HTML"
+        )
+    except Exception:
+        await state.clear()
+        await message.answer(
+            "❌ Хабарни админга юборишда хатолик юз берди. Кейинроқ қайта уриниб кўринг.",
+            reply_markup=get_main_menu(),
+            parse_mode="HTML"
+        )
+
+
+@dp.callback_query(F.data.startswith("reply_user_"))
+async def callback_reply_to_user(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("❌ Сизда бу ҳуқуқ йўқ!", show_alert=True)
+        return
+
+    target_id = int(callback.data.split("_")[2])
+    user_info = await db_get_user(target_id)
+    target_name = user_info.get("username") or "Foydalanuvchi"
+
+    await state.update_data(target_id=target_id, target_name=target_name)
+    await state.set_state(AdminDirectChat.chatting)
+    await callback.answer("Чат очилди!")
+
+    await callback.message.answer(
+        f"💬 <b>{target_name}</b> (ID: <code>{target_id}</code>) га жавоб ёзиш режими очилди!\n\n"
+        f"Энди нима ёзсангиз (ёки расм/медиа юборсангиз), тўғридан-тўғри унга боради.\n"
+        f"Чатни ёпиш учун <b>🔒 Чатни ёпиш</b> тугмасини босинг.",
+        reply_markup=get_chat_active_menu(),
+        parse_mode="HTML"
+    )
 
 
 @dp.message(F.text == "📿 Т А С Б Е Х Н И  О Ч И Ш")
@@ -856,6 +971,7 @@ async def admin_chat_send_message(message: types.Message, state: FSMContext):
         "🏆 Рейтинг",
         "👥 Дўстларни таклиф",
         "📋 Вазифалар",
+        "🆘 ЁРДАМ",
         "⬅️ Асосий меню"
     })
 )
@@ -874,15 +990,23 @@ async def forward_user_message_to_admin(message: types.Message):
         f"━━━━━━━━━━━━━━━\n"
     )
 
+    reply_markup = get_admin_reply_keyboard(u_id)
+
     try:
         if message.text:
             await bot.send_message(
                 chat_id=ADMIN_ID,
                 text=header + message.text,
+                reply_markup=reply_markup,
                 parse_mode="HTML"
             )
         else:
-            await bot.send_message(chat_id=ADMIN_ID, text=header, parse_mode="HTML")
+            await bot.send_message(
+                chat_id=ADMIN_ID,
+                text=header,
+                reply_markup=reply_markup,
+                parse_mode="HTML"
+            )
             await message.copy_to(chat_id=ADMIN_ID)
     except Exception:
         pass
