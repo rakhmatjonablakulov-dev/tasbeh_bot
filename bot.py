@@ -331,9 +331,8 @@ async def user_help_start(message: types.Message, state: FSMContext):
     await state.set_state(UserHelpChat.waiting_message)
     await message.answer(
         "🆘 <b>Ёрдам маркази</b>\n\n"
-        "Админнинг шахсий аккаунтига ўтмасдан, шу ерда савол ёки мурожаатингизни ёзинг. "
-        "Хабарингиз бот орқали админга юборилади ва сизга шу бот орқали жавоб қайтарилади.\n\n"
-        "<i>Бекор қилиш учун <b>⬅️ Асосий меню</b> тугмасини босинг.</i>",
+        "Админга шу ерда савол ёки мурожаатингизни ёзинг.\n\n"
+        "Бекор қилиш учун <b>⬅️ Асосий меню</b> тугмасини босинг.",
         reply_markup=get_help_cancel_menu(),
         parse_mode="HTML"
     )
