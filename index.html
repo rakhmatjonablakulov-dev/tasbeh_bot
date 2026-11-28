@@ -429,6 +429,16 @@ body {
   direction: rtl;
   line-height: 1.55;
 }
+.collection-card .translit-text {
+  font-size: 11.5px;
+  color: #ffe875;
+  margin: 6px 0;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.25);
+  border-left: 2px solid #f1c40f;
+  border-radius: 6px;
+  line-height: 1.45;
+}
 .collection-card .meaning {
   font-size: 11px;
   color: #a3e4d7;
@@ -574,6 +584,8 @@ if (tg) {
 const API_BASE_URL = "https://tasbeh-bot-1-dldd.onrender.com";
 const LEADERBOARD_API_URL = `${API_BASE_URL}/leaderboard`;
 
+const VOICE_RECOGNITION_LANG = "uz-UZ";
+
 const translations = {
   uz: {
     label: "🌐 UZ",
@@ -602,15 +614,15 @@ const translations = {
     youBadge: "(Сиз)",
     cityLabel: "📍 Шаҳар:",
     voiceUnsupported: "⚠️ Бу қурилма ёки браузер овозни танишни қўллаб-қувватламайди",
-    voiceListening: "🎙 Зикрни айтинг ёки «бир / яна» денг...",
+    voiceListening: "🎙 Ўзбек тилида зикрни айтинг (ҳар бир айтилган зикр +1 саналади)...",
     voiceStopped: "⏹ Овозли режим ўчирилди",
     voiceDenied: "⚠️ Микрофонга рухсат берилмади",
     prayers: { Fajr: "Бомдод", Dhuhr: "Пешин", Asr: "Аср", Maghrib: "Шом", Isha: "Хуфтон" }
   },
   ru: {
     label: "🌐 RU",
-    voiceBtnOff: "🎙 Голос",
-    voiceBtnOn: "🔴 Слушаю",
+    voiceBtnOff: "🎙 Овоз (UZ)",
+    voiceBtnOn: "🔴 Тингланмоқда (UZ)",
     ratingPrefix: "🏆 Рейтинг",
     prayerText: "🕌 Намаз",
     collectionText: "📚 Сборник",
@@ -633,10 +645,10 @@ const translations = {
     unit: "раз",
     youBadge: "(Вы)",
     cityLabel: "📍 Город:",
-    voiceUnsupported: "⚠️ Это устройство или браузер не поддерживает распознавание речи",
-    voiceListening: "🎙 Произнесите зикр или скажите «один / ещё»...",
-    voiceStopped: "⏹ Голосовой режим выключен",
-    voiceDenied: "⚠️ Нет доступа к микрофону",
+    voiceUnsupported: "⚠️ Бу қурилма ёки браузер овозни танишни қўллаб-қувватламайди",
+    voiceListening: "🎙 Ўзбек тилида зикрни айтинг (ҳар бир айтилган зикр +1 саналади)...",
+    voiceStopped: "⏹ Овозли режим ўчирилди",
+    voiceDenied: "⚠️ Микрофонга рухсат берилмади",
     prayers: { Fajr: "Фаджр", Dhuhr: "Зухр", Asr: "Аср", Maghrib: "Магриб", Isha: "Иша" }
   }
 };
@@ -648,48 +660,12 @@ let currentCollectionIndex = null;
 let isAdBusy = false;
 
 const i18nZikrs = [
-  {
-    uz: "Субҳаналлоҳ",
-    ru: "Субханаллах",
-    arabic: "سُبْحَانَ ٱللَّهِ",
-    key: "tasbih_subhanallah",
-    keywords: ["субханаллах", "субханаллох", "субханаллоҳ", "subhanallah", "subhanalloh", "subhanah"]
-  },
-  {
-    uz: "Алҳамдулиллаҳ",
-    ru: "Альхамдулиллах",
-    arabic: "ٱلْحَمْدُ لِلَّهِ",
-    key: "tasbih_alhamdulillah",
-    keywords: ["алхамдулиллах", "алхамдулиллаҳ", "алхамдулиллох", "алхамдулиллоҳ", "alhamdulillah", "alhamdullilah"]
-  },
-  {
-    uz: "Аллоҳу акбар",
-    ru: "Аллаху акбар",
-    arabic: "ٱللَّهُ أَكْبَرُ",
-    key: "tasbih_allahuakbar",
-    keywords: ["аллаху акбар", "аллоху акбар", "аллоҳу акбар", "аллах акбар", "allahu akbar", "allohu akbar"]
-  },
-  {
-    uz: "Астағфируллоҳ",
-    ru: "Астагфируллах",
-    arabic: "أَسْتَغْفِرُ ٱللَّهَ",
-    key: "tasbih_astagfirullah",
-    keywords: ["астагфируллах", "астагфируллох", "астағфируллоҳ", "астагфируллоҳ", "astagfirullah", "astagfirulloh"]
-  },
-  {
-    uz: "Саловат",
-    ru: "Салават",
-    arabic: "صَلَّى ٱللَّهُ عَلَيْهِ وَسَلَّمَ",
-    key: "tasbih_salovat",
-    keywords: ["саловат", "салават", "саллаллаху", "саллаллоху", "salovat", "salavat"]
-  },
-  {
-    uz: "Зикрлар",
-    ru: "Другие зикры",
-    arabic: "لَا إِلَٰهَ إِلَّا ٱللَّهُ",
-    key: "tasbih_other",
-    keywords: ["ла илаха иллаллах", "ла илоха иллаллох", "ла илоҳа иллаллоҳ", "la ilaha illallah", "зикр"]
-  }
+  { uz: "Субҳаналлоҳ", ru: "Субханаллах", arabic: "سُبْحَانَ ٱللَّهِ", key: "tasbih_subhanallah" },
+  { uz: "Алҳамдулиллаҳ", ru: "Альхамдулиллах", arabic: "ٱلْحَمْدُ لِلَّهِ", key: "tasbih_alhamdulillah" },
+  { uz: "Аллоҳу акбар", ru: "Аллаху акбар", arabic: "ٱللَّهُ أَكْبَرُ", key: "tasbih_allahuakbar" },
+  { uz: "Астағфируллоҳ", ru: "Астагфируллах", arabic: "أَسْتَغْفِرُ ٱللَّهَ", key: "tasbih_astagfirullah" },
+  { uz: "Саловат", ru: "Салават", arabic: "صَلَّى ٱللَّهُ عَلَيْهِ وَسَلَّمَ", key: "tasbih_salovat" },
+  { uz: "Зикрлар", ru: "Другие зикры", arabic: "لَا إِلَٰهَ إِلَّا ٱللَّهُ", key: "tasbih_other" }
 ];
 
 const zikrCollectionData = [
@@ -700,8 +676,7 @@ const zikrCollectionData = [
     ru: "Йа Фаттах",
     arabic: "يَا فَتَّاحُ",
     meaningUz: "Барча яхшилик, ризқ ва бахт эшикларини очувчи.",
-    meaningRu: "Открывающий врата всякого блага, удела и счастья.",
-    keywords: ["фаттах", "фаттох", "фаттоҳ", "fattah", "fattoh", "я фаттах", "йо фаттоҳ"]
+    meaningRu: "Открывающий врата всякого блага, удела и счастья."
   },
   {
     id: "surah_ikhlas",
@@ -709,9 +684,9 @@ const zikrCollectionData = [
     uz: "Ихлос сураси",
     ru: "Сура «Аль-Ихлас»",
     arabic: "قُلْ هُوَ اللَّهُ أَحَدٌ ۝ اللَّهُ الصَّمَدُ ۝ لَمْ يَلِدْ وَلَمْ يُولَدْ ۝ وَلَمْ يَكُنْ لَهُ كُفُوًا أَحَدٌ",
+    readingCyrUz: "Қул ҳуваллоҳу аҳад. Аллоҳус сомад. Лам ялид ва лам йўлад. Ва лам якуллаҳу куфуван аҳад.",
     meaningUz: "1. Айт: «У Аллоҳ ягонадир.\n2. Аллоҳ Сомад (беҳожат, ҳеч кимга муҳтож эмас, барча Унга муҳтож)дир.\n3. У туғмаган ва туғилмагандир.\n4. Ва Унга ҳеч ким тенг бўлмагандир».",
-    meaningRu: "1. Скажи: «Он — Аллах Единый,\n2. Аллах Вечный (Самодостаточный, в котором все нуждаются).\n3. Он не родил и не был рожден,\n4. и нет никого, равного Ему».",
-    keywords: ["ихлас", "ихлос", "кул хуваллаху", "қул ҳуваллоҳу", "аллохус сомад", "ikhlas", "ixlos"]
+    meaningRu: "1. Скажи: «Он — Аллах Единый,\n2. Аллах Вечный (Самодостаточный, в котором все нуждаются).\n3. Он не родил и не был рожден,\n4. и нет никого, равного Ему»."
   },
   {
     id: "subhanallahi_wa_bihamdihi",
@@ -720,8 +695,7 @@ const zikrCollectionData = [
     ru: "Субханаллахи ва бихамдихи",
     arabic: "سُبْحَانَ اللهِ وَبِحَمْدِهِ",
     meaningUz: "Аллоҳга ҳамд айтиш билан Уни поклаб ёд этаман.",
-    meaningRu: "Пречист Аллах и хвала Ему.",
-    keywords: ["бихамдихи", "бихамдиҳи", "субханаллахи", "субҳаналлоҳи", "bihamdihi"]
+    meaningRu: "Пречист Аллах и хвала Ему."
   },
   {
     id: "salawat_ibrahimiyya_short",
@@ -730,8 +704,7 @@ const zikrCollectionData = [
     ru: "Аллахумма салли 'аля Мухаммадин ва 'аля али Мухаммад",
     arabic: "اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ",
     meaningUz: "Эй Аллоҳ! Муҳаммадга ва Муҳаммаднинг оиласига салавот юборгин.",
-    meaningRu: "О Аллах, благослови Мухаммада и род Мухаммада.",
-    keywords: ["солли", "салли", "мухаммадин", "муҳаммадин", "саловат", "салават"]
+    meaningRu: "О Аллах, благослови Мухаммада и род Мухаммада."
   },
   {
     id: "la_hawla",
@@ -740,8 +713,7 @@ const zikrCollectionData = [
     ru: "Ля хавля ва ля куввата илля биллях",
     arabic: "لَا حَوْلَ وَلَا قُوَّةَ إِلَّا بِٱللَّهِ",
     meaningUz: "Куч ва қувват фақат Буюк ва Олий Аллоҳдадир.",
-    meaningRu: "Нет силы и могущества кроме как у Аллаха.",
-    keywords: ["хавла", "ҳавла", "куввата", "қуввата", "биллях", "биллаҳ", "hawla", "quvvata"]
+    meaningRu: "Нет силы и могущества кроме как у Аллаха."
   },
   {
     id: "astagfirullah_azim",
@@ -750,8 +722,7 @@ const zikrCollectionData = [
     ru: "Астагфируллахаль 'Азима ва атубу iляйх",
     arabic: "أَسْتَغْفِرُ اللهَ الْعَظِيمَ وَأَتُوبُ إِلَيْهِ",
     meaningUz: "Буюк Аллоҳдан мағфират сўрайман ва Унга тавба қиламан.",
-    meaningRu: "Прошу прощения у Великого Аллаха и каюсь перед Ним.",
-    keywords: ["азийм", "азим", "атубу", "илайх", "илайҳ", "астагфируллох", "астағфируллоҳ"]
+    meaningRu: "Прошу прощения у Великого Аллаха и каюсь перед Ним."
   },
   {
     id: "subhanallahil_azim_wa_bihamdihi",
@@ -760,8 +731,7 @@ const zikrCollectionData = [
     ru: "Субханаллахиль 'Азими ва бихамдихи",
     arabic: "سُبْحَانَ اللهِ الْعَظِيمِ وَبِحَمْدِهِ",
     meaningUz: "Буюк Аллоҳга ҳамд ва тасбеҳ айтаман.",
-    meaningRu: "Пречист Великий Аллах и хвала Ему.",
-    keywords: ["азийм", "азим", "бихамдихи", "бихамдиҳи", "субханаллох", "субҳаналлоҳ"]
+    meaningRu: "Пречист Великий Аллах и хвала Ему."
   }
 ];
 
@@ -852,8 +822,7 @@ function getActiveZikr() {
     mode: activeMode === 'collection' && currentCollectionIndex !== null ? 'collection' : 'main',
     key: item.key,
     title: item[currentLangCode],
-    arabic: item.arabic,
-    keywords: item.keywords || []
+    arabic: item.arabic
   };
 }
 
@@ -993,15 +962,15 @@ function incrementActiveZikr() {
   }
 }
 
-/* ================= ОВОЗ ОРҚАЛИ САНОҚ (WEB SPEECH API) ================= */
+/* ================= ЎЗБЕК ТИЛИДА ОВОЗЛИ СЧЁТЧИК ================= */
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition || null;
 let recognition = null;
 let isVoiceListening = false;
 let lastVoiceCountAt = 0;
-const VOICE_COOLDOWN_MS = 850;
-const generalCountWords = ["бир", "яна", "плюс", "один", "еще", "ещё", "one", "next", "plus"];
+let lastCountedUtterance = "";
+const VOICE_COOLDOWN_MS = 750;
 
-function normalizeSpeechText(text) {
+function normalizeUzbekSpeech(text) {
   return (text || "")
     .toLowerCase()
     .replace(/[.,!?«»"():;—-]/g, " ")
@@ -1009,18 +978,20 @@ function normalizeSpeechText(text) {
     .trim();
 }
 
-function isMatchedVoiceZikr(transcript, activeZikr) {
-  const clean = normalizeSpeechText(transcript);
-  if (!clean) return false;
+function handleUzbekVoiceTranscript(rawTranscript, isFinal) {
+  if (!isVoiceListening) return;
+  const cleanText = normalizeUzbekSpeech(rawTranscript);
+  if (!cleanText) return;
 
-  const titleClean = normalizeSpeechText(activeZikr.title);
-  if (titleClean && clean.includes(titleClean)) return true;
+  const now = Date.now();
+  if (now - lastVoiceCountAt < VOICE_COOLDOWN_MS) return;
 
-  const keywords = activeZikr.keywords || [];
-  if (keywords.some(kw => clean.includes(normalizeSpeechText(kw)))) return true;
+  if (!isFinal && cleanText === lastCountedUtterance) return;
 
-  const words = clean.split(" ");
-  return generalCountWords.some(w => words.includes(w));
+  lastVoiceCountAt = now;
+  lastCountedUtterance = cleanText;
+  incrementActiveZikr();
+  voiceStatusBar.textContent = `🎙 «${cleanText}» → +1`;
 }
 
 function updateVoiceUI() {
@@ -1036,36 +1007,25 @@ function updateVoiceUI() {
   }
 }
 
-function initSpeechRecognition() {
+function initUzbekSpeechRecognition() {
   if (!SpeechRecognition) return null;
   const rec = new SpeechRecognition();
-  rec.lang = currentLangCode === 'ru' ? 'ru-RU' : 'uz-UZ';
-  rec.interimResults = false;
+  rec.lang = VOICE_RECOGNITION_LANG;
+  rec.interimResults = true;
   rec.maxAlternatives = 3;
   rec.continuous = true;
 
   rec.onresult = (event) => {
-    const now = Date.now();
-    if (now - lastVoiceCountAt < VOICE_COOLDOWN_MS) return;
-
-    const lastResult = event.results[event.results.length - 1];
-    if (!lastResult || !lastResult.isFinal) return;
-
-    let combinedTranscript = "";
-    for (let i = 0; i < lastResult.length; i++) {
-      combinedTranscript += " " + (lastResult[i].transcript || "");
-    }
-
-    const activeZikr = getActiveZikr();
-    const cleanText = normalizeSpeechText(combinedTranscript);
-    if (!cleanText) return;
-
-    if (isMatchedVoiceZikr(cleanText, activeZikr)) {
-      lastVoiceCountAt = now;
-      incrementActiveZikr();
-      voiceStatusBar.textContent = `🎙 «${cleanText}» → +1`;
-    } else {
-      voiceStatusBar.textContent = `🎙 «${cleanText}»`;
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const res = event.results[i];
+      if (!res || !res[0]) continue;
+      const transcript = res[0].transcript || "";
+      if (res.isFinal) {
+        handleUzbekVoiceTranscript(transcript, true);
+        lastCountedUtterance = "";
+      } else if (normalizeUzbekSpeech(transcript).length >= 3) {
+        handleUzbekVoiceTranscript(transcript, false);
+      }
     }
   };
 
@@ -1087,7 +1047,7 @@ function initSpeechRecognition() {
   rec.onend = () => {
     if (isVoiceListening) {
       try {
-        rec.lang = currentLangCode === 'ru' ? 'ru-RU' : 'uz-UZ';
+        rec.lang = VOICE_RECOGNITION_LANG;
         rec.start();
       } catch (e) {
         isVoiceListening = false;
@@ -1103,6 +1063,7 @@ function initSpeechRecognition() {
 
 function stopVoiceMode() {
   isVoiceListening = false;
+  lastCountedUtterance = "";
   if (recognition) {
     try {
       recognition.stop();
@@ -1126,9 +1087,10 @@ voiceBtn.addEventListener('click', () => {
     return;
   }
 
-  recognition = initSpeechRecognition();
+  recognition = initUzbekSpeechRecognition();
   try {
     isVoiceListening = true;
+    lastCountedUtterance = "";
     voiceStatusBar.textContent = t.voiceListening;
     updateVoiceUI();
     recognition.start();
@@ -1138,7 +1100,7 @@ voiceBtn.addEventListener('click', () => {
     showToast(t.voiceUnsupported);
   }
 });
-/* =================================================================== */
+/* =========================================================== */
 
 function updateUI() {
   const t = translations[currentLangCode];
@@ -1257,6 +1219,9 @@ function renderCollection() {
   zikrCollectionData.forEach((item, idx) => {
     const title = item[currentLangCode];
     const meaning = currentLangCode === 'ru' ? item.meaningRu : item.meaningUz;
+    const readingHtml = item.readingCyrUz
+      ? `<div class="translit-text">🔤 <b>Ўқилиши:</b> ${item.readingCyrUz}</div>`
+      : "";
     const itemCount = getZikrCount(item.key);
     const isSelected = activeMode === 'collection' && currentCollectionIndex === idx;
     const btnLabel = isSelected ? t.selectedBadge : t.selectBtn;
@@ -1264,6 +1229,7 @@ function renderCollection() {
       <div class="collection-card ${isSelected ? 'selected-col' : ''}">
         <div class="title-uz">${title}</div>
         <div class="ar-text">${item.arabic}</div>
+        ${readingHtml}
         <div class="meaning">💡 ${meaning}</div>
         <div class="collection-footer">
           <span class="collection-count">${itemCount} ${t.unit}</span>
@@ -1307,9 +1273,6 @@ document.getElementById('closePrayerModal').addEventListener('click', () => {
 
 langToggleBtn.addEventListener('click', () => {
   currentLangCode = currentLangCode === 'uz' ? 'ru' : 'uz';
-  if (recognition && isVoiceListening) {
-    recognition.lang = currentLangCode === 'ru' ? 'ru-RU' : 'uz-UZ';
-  }
   updateUI();
 });
 
