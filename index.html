@@ -614,7 +614,7 @@ const translations = {
     youBadge: "(Сиз)",
     cityLabel: "📍 Шаҳар:",
     voiceUnsupported: "⚠️ Бу қурилма ёки браузер овозни танишни қўллаб-қувватламайди",
-    voiceListening: "🎙 Ўзбек тилида зикрни айтинг (ҳар бир айтилган зикр +1 саналади)...",
+    voiceListening: "🎙 Ўзбек тилида зикрни айтинг (ҳар бир айтилган зикр бир марта саналади)...",
     voiceStopped: "⏹ Овозли режим ўчирилди",
     voiceDenied: "⚠️ Микрофонга рухсат берилмади",
     prayers: { Fajr: "Бомдод", Dhuhr: "Пешин", Asr: "Аср", Maghrib: "Шом", Isha: "Хуфтон" }
@@ -646,7 +646,7 @@ const translations = {
     youBadge: "(Вы)",
     cityLabel: "📍 Город:",
     voiceUnsupported: "⚠️ Бу қурилма ёки браузер овозни танишни қўллаб-қувватламайди",
-    voiceListening: "🎙 Ўзбек тилида зикрни айтинг (ҳар бир айтилган зикр +1 саналади)...",
+    voiceListening: "🎙 Ўзбек тилида зикрни айтинг (ҳар бир айтилган зикр бир марта саналади)...",
     voiceStopped: "⏹ Овозли режим ўчирилди",
     voiceDenied: "⚠️ Микрофонга рухсат берилмади",
     prayers: { Fajr: "Фаджр", Dhuhr: "Зухр", Asr: "Аср", Maghrib: "Магриб", Isha: "Иша" }
@@ -967,8 +967,7 @@ const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecogni
 let recognition = null;
 let isVoiceListening = false;
 let lastVoiceCountAt = 0;
-let lastCountedUtterance = "";
-const VOICE_COOLDOWN_MS = 750;
+const VOICE_COOLDOWN_MS = 1000;
 
 function normalizeUzbekSpeech(text) {
   return (text || "")
@@ -978,7 +977,7 @@ function normalizeUzbekSpeech(text) {
     .trim();
 }
 
-function handleUzbekVoiceTranscript(rawTranscript, isFinal) {
+function handleFinalUzbekUtterance(rawTranscript) {
   if (!isVoiceListening) return;
   const cleanText = normalizeUzbekSpeech(rawTranscript);
   if (!cleanText) return;
@@ -986,10 +985,7 @@ function handleUzbekVoiceTranscript(rawTranscript, isFinal) {
   const now = Date.now();
   if (now - lastVoiceCountAt < VOICE_COOLDOWN_MS) return;
 
-  if (!isFinal && cleanText === lastCountedUtterance) return;
-
   lastVoiceCountAt = now;
-  lastCountedUtterance = cleanText;
   incrementActiveZikr();
   voiceStatusBar.textContent = `🎙 «${cleanText}» → +1`;
 }
@@ -1011,21 +1007,15 @@ function initUzbekSpeechRecognition() {
   if (!SpeechRecognition) return null;
   const rec = new SpeechRecognition();
   rec.lang = VOICE_RECOGNITION_LANG;
-  rec.interimResults = true;
-  rec.maxAlternatives = 3;
+  rec.interimResults = false;
+  rec.maxAlternatives = 1;
   rec.continuous = true;
 
   rec.onresult = (event) => {
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const res = event.results[i];
-      if (!res || !res[0]) continue;
-      const transcript = res[0].transcript || "";
-      if (res.isFinal) {
-        handleUzbekVoiceTranscript(transcript, true);
-        lastCountedUtterance = "";
-      } else if (normalizeUzbekSpeech(transcript).length >= 3) {
-        handleUzbekVoiceTranscript(transcript, false);
-      }
+      if (!res || !res.isFinal || !res[0]) continue;
+      handleFinalUzbekUtterance(res[0].transcript || "");
     }
   };
 
@@ -1063,7 +1053,6 @@ function initUzbekSpeechRecognition() {
 
 function stopVoiceMode() {
   isVoiceListening = false;
-  lastCountedUtterance = "";
   if (recognition) {
     try {
       recognition.stop();
@@ -1090,7 +1079,6 @@ voiceBtn.addEventListener('click', () => {
   recognition = initUzbekSpeechRecognition();
   try {
     isVoiceListening = true;
-    lastCountedUtterance = "";
     voiceStatusBar.textContent = t.voiceListening;
     updateVoiceUI();
     recognition.start();
