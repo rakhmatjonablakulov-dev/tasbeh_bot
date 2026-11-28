@@ -74,7 +74,7 @@ body {
   gap: 5px;
   flex-wrap: wrap;
   justify-content: flex-end;
-  max-width: 245px;
+  max-width: 260px;
 }
 .action-btn {
   background: rgba(15, 40, 30, 0.88);
@@ -87,6 +87,13 @@ body {
   cursor: pointer;
   backdrop-filter: blur(5px);
   white-space: nowrap;
+  transition: all 0.2s ease;
+}
+.action-btn.voice-active {
+  background: linear-gradient(135deg, #e74c3c, #c0392b);
+  border-color: #ffe875;
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(231, 76, 60, 0.8);
 }
 .rating-menu-btn {
   background: linear-gradient(135deg, rgba(241, 196, 15, 0.25), rgba(15, 45, 35, 0.92));
@@ -220,6 +227,14 @@ body {
   margin-top: 4px;
   font-weight: 500;
   text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+}
+.voice-status-bar {
+  font-size: 11px;
+  color: #ffe875;
+  margin-top: 6px;
+  min-height: 16px;
+  padding: 0 8px;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.9);
 }
 .tap-button-container {
   display: flex;
@@ -412,12 +427,15 @@ body {
   text-align: right;
   margin: 4px 0;
   direction: rtl;
+  line-height: 1.55;
 }
 .collection-card .meaning {
   font-size: 11px;
   color: #a3e4d7;
   font-style: italic;
   margin-bottom: 6px;
+  white-space: pre-line;
+  line-height: 1.45;
 }
 .collection-footer {
   display: flex;
@@ -453,6 +471,7 @@ body {
   <div class="top-row">
     <div class="title" id="appTitle">✨ Тасбеҳ & Зикр ✨</div>
     <div class="top-btns">
+      <button class="action-btn" id="voiceBtn">🎙 Овоз</button>
       <button class="action-btn" id="collectionBtn">📚 Тўплам</button>
       <button class="action-btn" id="prayerBtn">🕌 Намоз</button>
       <button class="action-btn rating-menu-btn" id="ratingBtn">🏆 Рейтинг: 0</button>
@@ -486,6 +505,7 @@ body {
   <div class="counter-value" id="counter">0</div>
   <div class="counter-arabic" id="arabicText">سُبْحَانَ ٱللَّهِ</div>
   <div class="counter-label" id="zikrLabel">Субҳаналлоҳ марта ўқилди</div>
+  <div class="voice-status-bar" id="voiceStatusBar"></div>
 </div>
 
 <div class="tap-button-container">
@@ -557,6 +577,8 @@ const LEADERBOARD_API_URL = `${API_BASE_URL}/leaderboard`;
 const translations = {
   uz: {
     label: "🌐 UZ",
+    voiceBtnOff: "🎙 Овоз",
+    voiceBtnOn: "🔴 Тингланмоқда",
     ratingPrefix: "🏆 Рейтинг",
     prayerText: "🕌 Намоз",
     collectionText: "📚 Тўплам",
@@ -579,10 +601,16 @@ const translations = {
     unit: "та",
     youBadge: "(Сиз)",
     cityLabel: "📍 Шаҳар:",
+    voiceUnsupported: "⚠️ Бу қурилма ёки браузер овозни танишни қўллаб-қувватламайди",
+    voiceListening: "🎙 Зикрни айтинг ёки «бир / яна» денг...",
+    voiceStopped: "⏹ Овозли режим ўчирилди",
+    voiceDenied: "⚠️ Микрофонга рухсат берилмади",
     prayers: { Fajr: "Бомдод", Dhuhr: "Пешин", Asr: "Аср", Maghrib: "Шом", Isha: "Хуфтон" }
   },
   ru: {
     label: "🌐 RU",
+    voiceBtnOff: "🎙 Голос",
+    voiceBtnOn: "🔴 Слушаю",
     ratingPrefix: "🏆 Рейтинг",
     prayerText: "🕌 Намаз",
     collectionText: "📚 Сборник",
@@ -605,6 +633,10 @@ const translations = {
     unit: "раз",
     youBadge: "(Вы)",
     cityLabel: "📍 Город:",
+    voiceUnsupported: "⚠️ Это устройство или браузер не поддерживает распознавание речи",
+    voiceListening: "🎙 Произнесите зикр или скажите «один / ещё»...",
+    voiceStopped: "⏹ Голосовой режим выключен",
+    voiceDenied: "⚠️ Нет доступа к микрофону",
     prayers: { Fajr: "Фаджр", Dhuhr: "Зухр", Asr: "Аср", Maghrib: "Магриб", Isha: "Иша" }
   }
 };
@@ -616,15 +648,71 @@ let currentCollectionIndex = null;
 let isAdBusy = false;
 
 const i18nZikrs = [
-  { uz: "Субҳаналлоҳ", ru: "Субханаллах", arabic: "سُبْحَانَ ٱللَّهِ", key: "tasbih_subhanallah" },
-  { uz: "Алҳамдулиллаҳ", ru: "Альхамдулиллах", arabic: "ٱلْحَمْدُ لِلَّهِ", key: "tasbih_alhamdulillah" },
-  { uz: "Аллоҳу акбар", ru: "Аллаху акбар", arabic: "ٱللَّهُ أَكْبَرُ", key: "tasbih_allahuakbar" },
-  { uz: "Астағфируллоҳ", ru: "Астагфируллах", arabic: "أَسْتَغْفِرُ ٱللَّهَ", key: "tasbih_astagfirullah" },
-  { uz: "Саловат", ru: "Салават", arabic: "صَلَّى ٱللَّهُ عَلَيْهِ وَسَلَّمَ", key: "tasbih_salovat" },
-  { uz: "Зикрлар", ru: "Другие зикры", arabic: "لَا إِلَٰهَ إِلَّا ٱللَّهُ", key: "tasbih_other" }
+  {
+    uz: "Субҳаналлоҳ",
+    ru: "Субханаллах",
+    arabic: "سُبْحَانَ ٱللَّهِ",
+    key: "tasbih_subhanallah",
+    keywords: ["субханаллах", "субханаллох", "субханаллоҳ", "subhanallah", "subhanalloh", "subhanah"]
+  },
+  {
+    uz: "Алҳамдулиллаҳ",
+    ru: "Альхамдулиллах",
+    arabic: "ٱلْحَمْدُ لِلَّهِ",
+    key: "tasbih_alhamdulillah",
+    keywords: ["алхамдулиллах", "алхамдулиллаҳ", "алхамдулиллох", "алхамдулиллоҳ", "alhamdulillah", "alhamdullilah"]
+  },
+  {
+    uz: "Аллоҳу акбар",
+    ru: "Аллаху акбар",
+    arabic: "ٱللَّهُ أَكْبَرُ",
+    key: "tasbih_allahuakbar",
+    keywords: ["аллаху акбар", "аллоху акбар", "аллоҳу акбар", "аллах акбар", "allahu akbar", "allohu akbar"]
+  },
+  {
+    uz: "Астағфируллоҳ",
+    ru: "Астагфируллах",
+    arabic: "أَسْتَغْفِرُ ٱللَّهَ",
+    key: "tasbih_astagfirullah",
+    keywords: ["астагфируллах", "астагфируллох", "астағфируллоҳ", "астагфируллоҳ", "astagfirullah", "astagfirulloh"]
+  },
+  {
+    uz: "Саловат",
+    ru: "Салават",
+    arabic: "صَلَّى ٱللَّهُ عَلَيْهِ وَسَلَّمَ",
+    key: "tasbih_salovat",
+    keywords: ["саловат", "салават", "саллаллаху", "саллаллоху", "salovat", "salavat"]
+  },
+  {
+    uz: "Зикрлар",
+    ru: "Другие зикры",
+    arabic: "لَا إِلَٰهَ إِلَّا ٱللَّهُ",
+    key: "tasbih_other",
+    keywords: ["ла илаха иллаллах", "ла илоха иллаллох", "ла илоҳа иллаллоҳ", "la ilaha illallah", "зикр"]
+  }
 ];
 
 const zikrCollectionData = [
+  {
+    id: "ya_fattah",
+    key: "col_zikr_ya_fattah",
+    uz: "Йа Фаттааҳ",
+    ru: "Йа Фаттах",
+    arabic: "يَا فَتَّاحُ",
+    meaningUz: "Барча яхшилик, ризқ ва бахт эшикларини очувчи.",
+    meaningRu: "Открывающий врата всякого блага, удела и счастья.",
+    keywords: ["фаттах", "фаттох", "фаттоҳ", "fattah", "fattoh", "я фаттах", "йо фаттоҳ"]
+  },
+  {
+    id: "surah_ikhlas",
+    key: "col_zikr_surah_ikhlas",
+    uz: "Ихлос сураси",
+    ru: "Сура «Аль-Ихлас»",
+    arabic: "قُلْ هُوَ اللَّهُ أَحَدٌ ۝ اللَّهُ الصَّمَدُ ۝ لَمْ يَلِدْ وَلَمْ يُولَدْ ۝ وَلَمْ يَكُنْ لَهُ كُفُوًا أَحَدٌ",
+    meaningUz: "1. Айт: «У Аллоҳ ягонадир.\n2. Аллоҳ Сомад (беҳожат, ҳеч кимга муҳтож эмас, барча Унга муҳтож)дир.\n3. У туғмаган ва туғилмагандир.\n4. Ва Унга ҳеч ким тенг бўлмагандир».",
+    meaningRu: "1. Скажи: «Он — Аллах Единый,\n2. Аллах Вечный (Самодостаточный, в котором все нуждаются).\n3. Он не родил и не был рожден,\n4. и нет никого, равного Ему».",
+    keywords: ["ихлас", "ихлос", "кул хуваллаху", "қул ҳуваллоҳу", "аллохус сомад", "ikhlas", "ixlos"]
+  },
   {
     id: "subhanallahi_wa_bihamdihi",
     key: "col_zikr_subhanallahi_wa_bihamdihi",
@@ -632,7 +720,8 @@ const zikrCollectionData = [
     ru: "Субханаллахи ва бихамдихи",
     arabic: "سُبْحَانَ اللهِ وَبِحَمْدِهِ",
     meaningUz: "Аллоҳга ҳамд айтиш билан Уни поклаб ёд этаман.",
-    meaningRu: "Пречист Аллах и хвала Ему."
+    meaningRu: "Пречист Аллах и хвала Ему.",
+    keywords: ["бихамдихи", "бихамдиҳи", "субханаллахи", "субҳаналлоҳи", "bihamdihi"]
   },
   {
     id: "salawat_ibrahimiyya_short",
@@ -641,7 +730,8 @@ const zikrCollectionData = [
     ru: "Аллахумма салли 'аля Мухаммадин ва 'аля али Мухаммад",
     arabic: "اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ",
     meaningUz: "Эй Аллоҳ! Муҳаммадга ва Муҳаммаднинг оиласига салавот юборгин.",
-    meaningRu: "О Аллах, благослови Мухаммада и род Мухаммада."
+    meaningRu: "О Аллах, благослови Мухаммада и род Мухаммада.",
+    keywords: ["солли", "салли", "мухаммадин", "муҳаммадин", "саловат", "салават"]
   },
   {
     id: "la_hawla",
@@ -650,7 +740,8 @@ const zikrCollectionData = [
     ru: "Ля хавля ва ля куввата илля биллях",
     arabic: "لَا حَوْلَ وَلَا قُوَّةَ إِلَّا بِٱللَّهِ",
     meaningUz: "Куч ва қувват фақат Буюк ва Олий Аллоҳдадир.",
-    meaningRu: "Нет силы и могущества кроме как у Аллаха."
+    meaningRu: "Нет силы и могущества кроме как у Аллаха.",
+    keywords: ["хавла", "ҳавла", "куввата", "қуввата", "биллях", "биллаҳ", "hawla", "quvvata"]
   },
   {
     id: "astagfirullah_azim",
@@ -659,7 +750,8 @@ const zikrCollectionData = [
     ru: "Астагфируллахаль 'Азима ва атубу iляйх",
     arabic: "أَسْتَغْفِرُ اللهَ الْعَظِيمَ وَأَتُوبُ إِلَيْهِ",
     meaningUz: "Буюк Аллоҳдан мағфират сўрайман ва Унга тавба қиламан.",
-    meaningRu: "Прошу прощения у Великого Аллаха и каюсь перед Ним."
+    meaningRu: "Прошу прощения у Великого Аллаха и каюсь перед Ним.",
+    keywords: ["азийм", "азим", "атубу", "илайх", "илайҳ", "астагфируллох", "астағфируллоҳ"]
   },
   {
     id: "subhanallahil_azim_wa_bihamdihi",
@@ -668,10 +760,13 @@ const zikrCollectionData = [
     ru: "Субханаллахиль 'Азими ва бихамдихи",
     arabic: "سُبْحَانَ اللهِ الْعَظِيمِ وَبِحَمْدِهِ",
     meaningUz: "Буюк Аллоҳга ҳамд ва тасбеҳ айтаман.",
-    meaningRu: "Пречист Великий Аллах и хвала Ему."
+    meaningRu: "Пречист Великий Аллах и хвала Ему.",
+    keywords: ["азийм", "азим", "бихамдихи", "бихамдиҳи", "субханаллох", "субҳаналлоҳ"]
   }
 ];
 
+const voiceBtn = document.getElementById('voiceBtn');
+const voiceStatusBar = document.getElementById('voiceStatusBar');
 const langToggleBtn = document.getElementById('langToggleBtn');
 const ratingBtn = document.getElementById('ratingBtn');
 const prayerBtn = document.getElementById('prayerBtn');
@@ -744,22 +839,21 @@ function setZikrCount(key, value) {
   localStorage.setItem(key, Math.max(0, parseInt(value, 10) || 0));
 }
 
-function getActiveZikr() {
+function getActiveZikrItem() {
   if (activeMode === 'collection' && currentCollectionIndex !== null && zikrCollectionData[currentCollectionIndex]) {
-    const item = zikrCollectionData[currentCollectionIndex];
-    return {
-      mode: 'collection',
-      key: item.key,
-      title: item[currentLangCode],
-      arabic: item.arabic
-    };
+    return zikrCollectionData[currentCollectionIndex];
   }
-  const item = i18nZikrs[currentZikrIndex];
+  return i18nZikrs[currentZikrIndex];
+}
+
+function getActiveZikr() {
+  const item = getActiveZikrItem();
   return {
-    mode: 'main',
+    mode: activeMode === 'collection' && currentCollectionIndex !== null ? 'collection' : 'main',
     key: item.key,
     title: item[currentLangCode],
-    arabic: item.arabic
+    arabic: item.arabic,
+    keywords: item.keywords || []
   };
 }
 
@@ -879,6 +973,173 @@ function formatCycle(count) {
   return `${mod === 0 ? 33 : mod} / 33`;
 }
 
+function incrementActiveZikr() {
+  const activeZikr = getActiveZikr();
+  const count = getZikrCount(activeZikr.key) + 1;
+  setZikrCount(activeZikr.key, count);
+
+  const total = calculateTotalZikr();
+  counterDisplay.textContent = count;
+  cycleIndicator.textContent = formatCycle(count);
+  updateRatingDisplays(total);
+
+  if (count % 33 === 0) {
+    milestoneToast.textContent = `✨ ${count} та тўлди! ✨`;
+    milestoneToast.classList.add('show');
+    setTimeout(() => milestoneToast.classList.remove('show'), 2000);
+    if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+  } else {
+    if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+  }
+}
+
+/* ================= ОВОЗ ОРҚАЛИ САНОҚ (WEB SPEECH API) ================= */
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+let recognition = null;
+let isVoiceListening = false;
+let lastVoiceCountAt = 0;
+const VOICE_COOLDOWN_MS = 850;
+const generalCountWords = ["бир", "яна", "плюс", "один", "еще", "ещё", "one", "next", "plus"];
+
+function normalizeSpeechText(text) {
+  return (text || "")
+    .toLowerCase()
+    .replace(/[.,!?«»"():;—-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isMatchedVoiceZikr(transcript, activeZikr) {
+  const clean = normalizeSpeechText(transcript);
+  if (!clean) return false;
+
+  const titleClean = normalizeSpeechText(activeZikr.title);
+  if (titleClean && clean.includes(titleClean)) return true;
+
+  const keywords = activeZikr.keywords || [];
+  if (keywords.some(kw => clean.includes(normalizeSpeechText(kw)))) return true;
+
+  const words = clean.split(" ");
+  return generalCountWords.some(w => words.includes(w));
+}
+
+function updateVoiceUI() {
+  const t = translations[currentLangCode];
+  voiceBtn.textContent = isVoiceListening ? t.voiceBtnOn : t.voiceBtnOff;
+  voiceBtn.classList.toggle('voice-active', isVoiceListening);
+  if (isVoiceListening) {
+    if (!voiceStatusBar.textContent) {
+      voiceStatusBar.textContent = t.voiceListening;
+    }
+  } else if (voiceStatusBar.textContent === t.voiceListening) {
+    voiceStatusBar.textContent = "";
+  }
+}
+
+function initSpeechRecognition() {
+  if (!SpeechRecognition) return null;
+  const rec = new SpeechRecognition();
+  rec.lang = currentLangCode === 'ru' ? 'ru-RU' : 'uz-UZ';
+  rec.interimResults = false;
+  rec.maxAlternatives = 3;
+  rec.continuous = true;
+
+  rec.onresult = (event) => {
+    const now = Date.now();
+    if (now - lastVoiceCountAt < VOICE_COOLDOWN_MS) return;
+
+    const lastResult = event.results[event.results.length - 1];
+    if (!lastResult || !lastResult.isFinal) return;
+
+    let combinedTranscript = "";
+    for (let i = 0; i < lastResult.length; i++) {
+      combinedTranscript += " " + (lastResult[i].transcript || "");
+    }
+
+    const activeZikr = getActiveZikr();
+    const cleanText = normalizeSpeechText(combinedTranscript);
+    if (!cleanText) return;
+
+    if (isMatchedVoiceZikr(cleanText, activeZikr)) {
+      lastVoiceCountAt = now;
+      incrementActiveZikr();
+      voiceStatusBar.textContent = `🎙 «${cleanText}» → +1`;
+    } else {
+      voiceStatusBar.textContent = `🎙 «${cleanText}»`;
+    }
+  };
+
+  rec.onerror = (event) => {
+    const t = translations[currentLangCode];
+    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+      isVoiceListening = false;
+      updateVoiceUI();
+      voiceStatusBar.textContent = t.voiceDenied;
+      showToast(t.voiceDenied);
+    } else if (event.error === 'not-supported') {
+      isVoiceListening = false;
+      updateVoiceUI();
+      voiceStatusBar.textContent = t.voiceUnsupported;
+      showToast(t.voiceUnsupported);
+    }
+  };
+
+  rec.onend = () => {
+    if (isVoiceListening) {
+      try {
+        rec.lang = currentLangCode === 'ru' ? 'ru-RU' : 'uz-UZ';
+        rec.start();
+      } catch (e) {
+        isVoiceListening = false;
+        updateVoiceUI();
+      }
+    } else {
+      updateVoiceUI();
+    }
+  };
+
+  return rec;
+}
+
+function stopVoiceMode() {
+  isVoiceListening = false;
+  if (recognition) {
+    try {
+      recognition.stop();
+    } catch (e) {}
+  }
+  updateVoiceUI();
+}
+
+voiceBtn.addEventListener('click', () => {
+  const t = translations[currentLangCode];
+  if (!SpeechRecognition) {
+    voiceStatusBar.textContent = t.voiceUnsupported;
+    showToast(t.voiceUnsupported);
+    return;
+  }
+
+  if (isVoiceListening) {
+    stopVoiceMode();
+    voiceStatusBar.textContent = t.voiceStopped;
+    showToast(t.voiceStopped);
+    return;
+  }
+
+  recognition = initSpeechRecognition();
+  try {
+    isVoiceListening = true;
+    voiceStatusBar.textContent = t.voiceListening;
+    updateVoiceUI();
+    recognition.start();
+  } catch (e) {
+    isVoiceListening = false;
+    updateVoiceUI();
+    showToast(t.voiceUnsupported);
+  }
+});
+/* =================================================================== */
+
 function updateUI() {
   const t = translations[currentLangCode];
   const total = calculateTotalZikr();
@@ -909,6 +1170,7 @@ function updateUI() {
   updateRatingDisplays(total);
   arabicText.textContent = activeZikr.arabic;
   zikrLabel.textContent = `${activeZikr.title} ${t.suffix}`;
+  updateVoiceUI();
 }
 
 let lastAzhanPlayedMinute = "";
@@ -1045,6 +1307,9 @@ document.getElementById('closePrayerModal').addEventListener('click', () => {
 
 langToggleBtn.addEventListener('click', () => {
   currentLangCode = currentLangCode === 'uz' ? 'ru' : 'uz';
+  if (recognition && isVoiceListening) {
+    recognition.lang = currentLangCode === 'ru' ? 'ru-RU' : 'uz-UZ';
+  }
   updateUI();
 });
 
@@ -1114,23 +1379,7 @@ tabs.forEach((tab, idx) => {
 });
 
 tapBtn.addEventListener('click', () => {
-  const activeZikr = getActiveZikr();
-  const count = getZikrCount(activeZikr.key) + 1;
-  setZikrCount(activeZikr.key, count);
-
-  const total = calculateTotalZikr();
-  counterDisplay.textContent = count;
-  cycleIndicator.textContent = formatCycle(count);
-  updateRatingDisplays(total);
-
-  if (count % 33 === 0) {
-    milestoneToast.textContent = `✨ ${count} та тўлди! ✨`;
-    milestoneToast.classList.add('show');
-    setTimeout(() => milestoneToast.classList.remove('show'), 2000);
-    if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-  } else {
-    if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
-  }
+  incrementActiveZikr();
 });
 
 syncBtn.addEventListener('click', async () => {
